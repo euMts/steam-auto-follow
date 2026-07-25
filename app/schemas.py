@@ -49,10 +49,17 @@ class CookieStatus(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    min_task_interval_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
+    min_task_interval_seconds: float | None = Field(default=None, ge=5.0, le=300.0)
     navigation_timeout_ms: int | None = Field(default=None, ge=5000, le=180000)
     element_timeout_ms: int | None = Field(default=None, ge=2000, le=120000)
     max_attempts: int | None = Field(default=None, ge=1, le=10)
+    jitter_seconds: float | None = Field(default=None, ge=0.0, le=60.0)
+    action_settle_ms: int | None = Field(default=None, ge=500, le=15000)
+    click_delay_ms_min: int | None = Field(default=None, ge=100, le=10000)
+    click_delay_ms_max: int | None = Field(default=None, ge=100, le=15000)
+    max_actions_per_hour: int | None = Field(default=None, ge=1, le=200)
+    cooldown_after_rate_limit_seconds: float | None = Field(default=None, ge=30.0, le=3600.0)
+    auth_recheck_every_n_tasks: int | None = Field(default=None, ge=1, le=50)
 
 
 class SettingsOut(BaseModel):
@@ -60,6 +67,16 @@ class SettingsOut(BaseModel):
     navigation_timeout_ms: int
     element_timeout_ms: int
     max_attempts: int
+    jitter_seconds: float
+    action_settle_ms: int
+    click_delay_ms_min: int
+    click_delay_ms_max: int
+    max_actions_per_hour: int
+    cooldown_after_rate_limit_seconds: float
+    auth_recheck_every_n_tasks: int
+    rate_limit_cooldown_until: datetime | None = None
+    adaptive_multiplier: float = 1.0
+    actions_last_hour: int = 0
     playwright_headless: bool
     app_host: str
     app_port: int

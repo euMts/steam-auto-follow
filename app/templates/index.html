@@ -142,12 +142,41 @@
 
     <section class="card span-2" id="card-settings">
       <div class="card-head">
-        <h2>Limites de execução</h2>
+        <h2>Limites e prevenção de rate limit</h2>
+        <span id="pacing-badge" class="badge badge-info">×1.00</span>
       </div>
       <form id="settings-form" class="form-grid form-inline">
         <label>
           Intervalo mínimo (s)
-          <input type="number" name="min_task_interval_seconds" min="1" max="300" step="1" />
+          <input type="number" name="min_task_interval_seconds" min="5" max="300" step="1" />
+        </label>
+        <label>
+          Jitter aleatório (s)
+          <input type="number" name="jitter_seconds" min="0" max="60" step="1" />
+        </label>
+        <label>
+          Espera pós-navegação (ms)
+          <input type="number" name="action_settle_ms" min="500" max="15000" step="100" />
+        </label>
+        <label>
+          Delay clique mín (ms)
+          <input type="number" name="click_delay_ms_min" min="100" max="10000" step="50" />
+        </label>
+        <label>
+          Delay clique máx (ms)
+          <input type="number" name="click_delay_ms_max" min="100" max="15000" step="50" />
+        </label>
+        <label>
+          Máx. ações / hora
+          <input type="number" name="max_actions_per_hour" min="1" max="200" step="1" />
+        </label>
+        <label>
+          Cooldown após rate limit (s)
+          <input type="number" name="cooldown_after_rate_limit_seconds" min="30" max="3600" step="10" />
+        </label>
+        <label>
+          Revalidar auth a cada N tarefas
+          <input type="number" name="auth_recheck_every_n_tasks" min="1" max="50" step="1" />
         </label>
         <label>
           Timeout navegação (ms)
@@ -161,6 +190,7 @@
           Máx. tentativas
           <input type="number" name="max_attempts" min="1" max="10" step="1" />
         </label>
+        <p class="muted full" id="pacing-status">—</p>
         <div class="actions">
           <button type="submit" class="secondary">Salvar configurações</button>
         </div>

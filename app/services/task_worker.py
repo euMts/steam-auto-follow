@@ -10,6 +10,7 @@ from app.config import SCREENSHOTS_DIR, ensure_data_dirs
 from app.database import get_session_factory
 from app.models import AuthStatus
 from app.services.queue_service import append_log, get_or_create_runtime, queue_service
+from app.services.rate_limit_guard import rate_limit_guard
 from app.services.websocket_manager import ws_manager
 from app.utils.crypto import CookieCryptoError
 
@@ -65,14 +66,15 @@ class TaskWorker:
                 factory = get_session_factory()
                 async with factory() as session:
                     runtime = await get_or_create_runtime(session)
-                    interval = runtime.min_task_interval_seconds
+                    wait_s = rate_limit_guard.compute_wait_seconds(runtime)
                 await append_log(
                     "INFO",
-                    "worker",
-                    f"Aguardando intervalo mínimo de {interval:.0f}s entre tarefas",
+                    "pacing",
+                    f"Aguardando {wait_s:.1f}s entre tarefas "
+                    f"(base+jitter ×{rate_limit_guard.adaptive_multiplier:.2f})",
                 )
                 try:
-                    await asyncio.wait_for(self._wake.wait(), timeout=interval)
+                    await asyncio.wait_for(self._wake.wait(), timeout=wait_s)
                     self._wake.clear()
                 except asyncio.TimeoutError:
                     pass
@@ -90,6 +92,15 @@ class TaskWorker:
     async def _process_one(self) -> bool:
         factory = get_session_factory()
         async with factory() as session:
+            try:
+                await rate_limit_guard.assert_can_run(session)
+            except RuntimeError as exc:
+                runtime = await get_or_create_runtime(session)
+                if not runtime.queue_paused:
+                    await queue_service.require_manual_action(session, str(exc))
+                    await append_log("WARNING", "pacing", str(exc))
+                return False
+
             task = await queue_service.claim_next(session)
             if not task:
                 return False
@@ -99,8 +110,13 @@ class TaskWorker:
             attempt = task.attempts
             max_attempts = task.max_attempts
 
+        rate_limit_guard.note_task_started()
         self._current_task_id = task_id
-        await append_log("INFO", "worker", f"Iniciando tarefa #{task_id} (tentativa {attempt}/{max_attempts})")
+        await append_log(
+            "INFO",
+            "worker",
+            f"Iniciando tarefa #{task_id} (tentativa {attempt}/{max_attempts})",
+        )
         await ws_manager.broadcast("browser_status", browser_manager.get_status_dict())
 
         try:
@@ -139,27 +155,42 @@ class TaskWorker:
                         ActionErrorCode.COOKIES_MISSING,
                         "Cookies da Steam não configurados",
                     )
+                runtime = await get_or_create_runtime(session)
+                auth_every = getattr(runtime, "auth_recheck_every_n_tasks", 5)
 
-            await set_step("Aplicando cookies")
-            async with factory() as session:
-                await steam_session.apply_cookies(session)
-
-            await set_step("Verificando autenticação")
-            async with factory() as session:
-                auth = await steam_session.verify_session(session, reapply=False)
-            await ws_manager.broadcast(
-                "authentication_status",
-                {
-                    "status": auth.status.value,
-                    "account_name": auth.account_name,
-                    "detail": auth.detail,
-                },
-            )
-            if auth.status != AuthStatus.AUTHENTICATED:
-                raise ActionError(
-                    ActionErrorCode.NOT_AUTHENTICATED,
-                    auth.detail or "Sessão não autenticada",
+            # Evita reaplicar cookies/navegar Store+Community a cada tarefa
+            if rate_limit_guard.needs_cookie_apply():
+                await set_step("Aplicando cookies")
+                async with factory() as session:
+                    await steam_session.apply_cookies(session)
+                rate_limit_guard.mark_cookies_applied()
+                await rate_limit_guard.human_pause(
+                    min_ms=1200, max_ms=2500, reason="Pausa após aplicar cookies"
                 )
+            else:
+                await append_log("INFO", "pacing", "Reutilizando cookies da sessão")
+
+            if rate_limit_guard.needs_auth_check(auth_every):
+                await set_step("Verificando autenticação")
+                async with factory() as session:
+                    auth = await steam_session.verify_session(session, reapply=False)
+                await ws_manager.broadcast(
+                    "authentication_status",
+                    {
+                        "status": auth.status.value,
+                        "account_name": auth.account_name,
+                        "detail": auth.detail,
+                    },
+                )
+                if auth.status != AuthStatus.AUTHENTICATED:
+                    rate_limit_guard.invalidate_session_cache()
+                    raise ActionError(
+                        ActionErrorCode.NOT_AUTHENTICATED,
+                        auth.detail or "Sessão não autenticada",
+                    )
+                rate_limit_guard.mark_auth_ok()
+            else:
+                await append_log("INFO", "pacing", "Pulando rechecagem de auth (cache)")
 
             result = await run_action(
                 action_type,
@@ -175,6 +206,7 @@ class TaskWorker:
                 await session.commit()
 
             browser_manager.state.last_action = result.message
+            rate_limit_guard.note_success()
             await append_log("SUCCESS", "action", f"Tarefa #{task_id}: {result.message}")
             async with factory() as session:
                 await queue_service.complete_task(session, task_id, result.message)
@@ -187,6 +219,7 @@ class TaskWorker:
                 ActionError(ActionErrorCode.COOKIES_MISSING, str(exc)),
             )
         except BrowserNotRunningError as exc:
+            rate_limit_guard.invalidate_session_cache()
             await self._handle_action_error(
                 task_id,
                 ActionError(ActionErrorCode.UNEXPECTED, str(exc), retryable=True),
@@ -201,6 +234,8 @@ class TaskWorker:
         manual = exc.code in MANUAL_CODES
         if manual:
             async with factory() as session:
+                if exc.code == ActionErrorCode.RATE_LIMIT:
+                    await rate_limit_guard.note_rate_limit(session)
                 await queue_service.require_manual_action(session, exc.message)
                 await queue_service.fail_task(
                     session,

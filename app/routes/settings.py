@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.browser.steam_session import steam_session
-from app.config import get_settings
 from app.database import get_db
 from app.schemas import (
     CookieInput,
@@ -14,6 +13,8 @@ from app.schemas import (
     SettingsUpdate,
 )
 from app.services.queue_service import append_log, get_or_create_runtime
+from app.services.rate_limit_guard import rate_limit_guard
+from app.services.settings_view import build_settings_out
 from app.services.task_worker import task_worker
 from app.services.websocket_manager import ws_manager
 from app.utils.crypto import CookieCryptoError
@@ -23,18 +24,8 @@ router = APIRouter(tags=["settings", "session"])
 
 @router.get("/api/settings", response_model=SettingsOut)
 async def get_app_settings(session: AsyncSession = Depends(get_db)) -> SettingsOut:
-    settings = get_settings()
     runtime = await get_or_create_runtime(session)
-    return SettingsOut(
-        min_task_interval_seconds=runtime.min_task_interval_seconds,
-        navigation_timeout_ms=runtime.navigation_timeout_ms,
-        element_timeout_ms=runtime.element_timeout_ms,
-        max_attempts=runtime.max_attempts,
-        playwright_headless=settings.playwright_headless,
-        app_host=settings.app_host,
-        app_port=settings.app_port,
-        steam_base_url=settings.steam_base_url,
-    )
+    return build_settings_out(runtime)
 
 
 @router.put("/api/settings", response_model=SettingsOut)
@@ -43,16 +34,29 @@ async def update_app_settings(
     session: AsyncSession = Depends(get_db),
 ) -> SettingsOut:
     runtime = await get_or_create_runtime(session)
-    if payload.min_task_interval_seconds is not None:
-        runtime.min_task_interval_seconds = payload.min_task_interval_seconds
-    if payload.navigation_timeout_ms is not None:
-        runtime.navigation_timeout_ms = payload.navigation_timeout_ms
-    if payload.element_timeout_ms is not None:
-        runtime.element_timeout_ms = payload.element_timeout_ms
-    if payload.max_attempts is not None:
-        runtime.max_attempts = payload.max_attempts
+    fields = (
+        "min_task_interval_seconds",
+        "navigation_timeout_ms",
+        "element_timeout_ms",
+        "max_attempts",
+        "jitter_seconds",
+        "action_settle_ms",
+        "click_delay_ms_min",
+        "click_delay_ms_max",
+        "max_actions_per_hour",
+        "cooldown_after_rate_limit_seconds",
+        "auth_recheck_every_n_tasks",
+    )
+    for name in fields:
+        value = getattr(payload, name)
+        if value is not None:
+            setattr(runtime, name, value)
+    if (
+        runtime.click_delay_ms_max < runtime.click_delay_ms_min
+    ):
+        runtime.click_delay_ms_max = runtime.click_delay_ms_min
     await session.commit()
-    await append_log("INFO", "settings", "Configurações atualizadas")
+    await append_log("INFO", "settings", "Configurações de pacing atualizadas")
     return await get_app_settings(session)
 
 
@@ -79,6 +83,7 @@ async def save_cookies(
         "session",
         "Cookies Store e Community salvos (valores ocultos, pares distintos)",
     )
+    rate_limit_guard.invalidate_session_cache()
     status = CookieStatus(**(await steam_session.cookie_status(session)))
 
     try:

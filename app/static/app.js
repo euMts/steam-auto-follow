@@ -234,11 +234,28 @@
     const settings = s.settings || {};
     const form = $("#settings-form");
     if (document.activeElement?.form !== form) {
-      form.min_task_interval_seconds.value = settings.min_task_interval_seconds ?? 8;
+      form.min_task_interval_seconds.value = settings.min_task_interval_seconds ?? 20;
+      form.jitter_seconds.value = settings.jitter_seconds ?? 8;
+      form.action_settle_ms.value = settings.action_settle_ms ?? 2500;
+      form.click_delay_ms_min.value = settings.click_delay_ms_min ?? 600;
+      form.click_delay_ms_max.value = settings.click_delay_ms_max ?? 1800;
+      form.max_actions_per_hour.value = settings.max_actions_per_hour ?? 25;
+      form.cooldown_after_rate_limit_seconds.value = settings.cooldown_after_rate_limit_seconds ?? 300;
+      form.auth_recheck_every_n_tasks.value = settings.auth_recheck_every_n_tasks ?? 5;
       form.navigation_timeout_ms.value = settings.navigation_timeout_ms ?? 45000;
       form.element_timeout_ms.value = settings.element_timeout_ms ?? 15000;
       form.max_attempts.value = settings.max_attempts ?? 3;
     }
+    const mult = settings.adaptive_multiplier ?? 1;
+    const pacingBadge = $("#pacing-badge");
+    pacingBadge.textContent = `×${Number(mult).toFixed(2)}`;
+    pacingBadge.className = `badge ${mult > 1.2 ? "badge-warn" : "badge-info"}`;
+    const cooldown = settings.rate_limit_cooldown_until
+      ? ` · cooldown até ${fmtTime(settings.rate_limit_cooldown_until)}`
+      : "";
+    $("#pacing-status").textContent =
+      `Ações na última hora: ${settings.actions_last_hour ?? 0}/${settings.max_actions_per_hour ?? 25}` +
+      ` · multiplicador adaptativo ×${Number(mult).toFixed(2)}${cooldown}`;
 
     renderTasks();
     renderLogs();
@@ -393,6 +410,13 @@
     const form = event.target;
     const payload = {
       min_task_interval_seconds: Number(form.min_task_interval_seconds.value),
+      jitter_seconds: Number(form.jitter_seconds.value),
+      action_settle_ms: Number(form.action_settle_ms.value),
+      click_delay_ms_min: Number(form.click_delay_ms_min.value),
+      click_delay_ms_max: Number(form.click_delay_ms_max.value),
+      max_actions_per_hour: Number(form.max_actions_per_hour.value),
+      cooldown_after_rate_limit_seconds: Number(form.cooldown_after_rate_limit_seconds.value),
+      auth_recheck_every_n_tasks: Number(form.auth_recheck_every_n_tasks.value),
       navigation_timeout_ms: Number(form.navigation_timeout_ms.value),
       element_timeout_ms: Number(form.element_timeout_ms.value),
       max_attempts: Number(form.max_attempts.value),

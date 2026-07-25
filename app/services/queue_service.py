@@ -289,6 +289,8 @@ class QueueService:
         if not paused:
             runtime.manual_action_required = False
             runtime.manual_action_message = None
+            # Retomada manual limpa o cooldown (usuário confirma que já esperou)
+            runtime.rate_limit_cooldown_until = None
         await session.commit()
         await session.refresh(runtime)
         await ws_manager.broadcast(

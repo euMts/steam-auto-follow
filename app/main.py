@@ -38,7 +38,7 @@ async def lifespan(_app: FastAPI):
         runtime = await get_or_create_runtime(session)
         # Sincroniza defaults do .env na primeira execução
         cfg = get_settings()
-        if runtime.min_task_interval_seconds == 8.0:
+        if runtime.min_task_interval_seconds in (8.0, 15.0, 20.0):
             runtime.min_task_interval_seconds = cfg.min_task_interval_seconds
         if runtime.navigation_timeout_ms == 45000:
             runtime.navigation_timeout_ms = cfg.navigation_timeout_ms
@@ -46,6 +46,11 @@ async def lifespan(_app: FastAPI):
             runtime.element_timeout_ms = cfg.element_timeout_ms
         if runtime.max_attempts == 3:
             runtime.max_attempts = cfg.max_attempts
+        # Garante defaults de pacing em bancos antigos
+        if getattr(runtime, "jitter_seconds", None) is None:
+            runtime.jitter_seconds = cfg.jitter_seconds
+        if getattr(runtime, "max_actions_per_hour", None) in (None, 0):
+            runtime.max_actions_per_hour = cfg.max_actions_per_hour
         await session.commit()
 
         recovered = await queue_service.recover_interrupted(session)

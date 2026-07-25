@@ -47,10 +47,17 @@ class Settings(BaseSettings):
     steam_base_url: str = "https://store.steampowered.com"
     playwright_headless: bool = False
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
-    min_task_interval_seconds: float = Field(default=8.0, ge=1.0, le=300.0)
+    min_task_interval_seconds: float = Field(default=20.0, ge=5.0, le=300.0)
     navigation_timeout_ms: int = Field(default=45000, ge=5000, le=180000)
     element_timeout_ms: int = Field(default=15000, ge=2000, le=120000)
     max_attempts: int = Field(default=3, ge=1, le=10)
+    jitter_seconds: float = Field(default=8.0, ge=0.0, le=60.0)
+    action_settle_ms: int = Field(default=2500, ge=500, le=15000)
+    click_delay_ms_min: int = Field(default=600, ge=100, le=10000)
+    click_delay_ms_max: int = Field(default=1800, ge=100, le=15000)
+    max_actions_per_hour: int = Field(default=25, ge=1, le=200)
+    cooldown_after_rate_limit_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
+    auth_recheck_every_n_tasks: int = Field(default=5, ge=1, le=50)
     log_buffer_size: int = 200
 
 

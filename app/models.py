@@ -116,10 +116,20 @@ class RuntimeState(Base):
     queue_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     manual_action_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     manual_action_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    min_task_interval_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    min_task_interval_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=20.0)
     navigation_timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=45000)
     element_timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=15000)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    jitter_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    action_settle_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=2500)
+    click_delay_ms_min: Mapped[int] = mapped_column(Integer, nullable=False, default=600)
+    click_delay_ms_max: Mapped[int] = mapped_column(Integer, nullable=False, default=1800)
+    max_actions_per_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
+    cooldown_after_rate_limit_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=300.0)
+    auth_recheck_every_n_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    rate_limit_cooldown_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     auth_status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

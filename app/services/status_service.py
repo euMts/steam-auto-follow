@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.browser.manager import browser_manager
 from app.browser.steam_session import steam_session
-from app.config import get_settings
 from app.models import AuthStatus
 from app.schemas import (
     AuthStatusOut,
@@ -14,10 +13,10 @@ from app.schemas import (
     DashboardStatus,
     LogOut,
     QueueStats,
-    SettingsOut,
     TaskOut,
 )
 from app.services.queue_service import get_or_create_runtime, list_logs, queue_service
+from app.services.settings_view import build_settings_out
 from app.services.task_worker import task_worker
 
 
@@ -28,7 +27,6 @@ def task_to_out(task) -> TaskOut:
 
 
 async def build_dashboard_status(session: AsyncSession) -> DashboardStatus:
-    settings = get_settings()
     runtime = await get_or_create_runtime(session)
     await browser_manager.refresh_state()
     cookie_status = CookieStatus(**(await steam_session.cookie_status(session)))
@@ -75,16 +73,7 @@ async def build_dashboard_status(session: AsyncSession) -> DashboardStatus:
         queue=QueueStats(**stats),
         current_task=current,
         recent_logs=[LogOut.model_validate(item) for item in logs],
-        settings=SettingsOut(
-            min_task_interval_seconds=runtime.min_task_interval_seconds,
-            navigation_timeout_ms=runtime.navigation_timeout_ms,
-            element_timeout_ms=runtime.element_timeout_ms,
-            max_attempts=runtime.max_attempts,
-            playwright_headless=settings.playwright_headless,
-            app_host=settings.app_host,
-            app_port=settings.app_port,
-            steam_base_url=settings.steam_base_url,
-        ),
+        settings=build_settings_out(runtime),
         last_action=browser_manager.state.last_action or runtime.last_action,
         current_url=browser_manager.state.current_url or runtime.current_url,
     )

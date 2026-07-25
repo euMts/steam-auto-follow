@@ -7,6 +7,9 @@ from playwright.async_api import Locator, Page, TimeoutError as PlaywrightTimeou
 
 from app.browser.manager import BrowserManager
 from app.config import get_settings
+from app.database import get_session_factory
+from app.services.queue_service import get_or_create_runtime
+from app.services.rate_limit_guard import rate_limit_guard
 
 
 class ActionErrorCode(str, Enum):
@@ -114,12 +117,19 @@ async def _step(callback, name: str) -> None:
 
 
 async def detect_blocking_conditions(page: Page) -> None:
+    """Detecta CAPTCHA, rate limit, login e outras páginas que exigem ação manual."""
     url = page.url.lower()
     content = ""
+    visible_text = ""
     try:
         content = (await page.content()).lower()
     except Exception:
         pass
+    try:
+        visible_text = (await page.locator("body").inner_text(timeout=2000)).lower()
+    except Exception:
+        pass
+    haystack = f"{url}\n{content}\n{visible_text}"
 
     if "login" in url and ("steampowered" in url or "steamcommunity" in url):
         raise ActionError(
@@ -127,14 +137,45 @@ async def detect_blocking_conditions(page: Page) -> None:
             "Página de login detectada — ação manual necessária",
         )
 
+    rate_limit_markers = (
+        "too many requests",
+        "solicitações demais",
+        "solicitacoes demais",
+        "realizou solicitações demais",
+        "realizou solicitacoes demais",
+        "aguarde e tente realizar",
+        "try again later",
+        "rate limit",
+        "você foi bloqueado temporariamente",
+        "voce foi bloqueado temporariamente",
+    )
+    if any(token in haystack for token in rate_limit_markers):
+        raise ActionError(
+            ActionErrorCode.RATE_LIMIT,
+            "Steam: solicitações demais recentemente — fila pausada. "
+            "Aguarde no navegador e depois clique em Retomar fila",
+        )
+
+    # Página genérica "Ops!" da Steam com erro de solicitação
+    if ("ops!" in haystack or "ops！" in haystack) and (
+        "erro ao processar" in haystack
+        or "error processing" in haystack
+        or "sua solicitação" in haystack
+        or "your request" in haystack
+    ):
+        raise ActionError(
+            ActionErrorCode.RATE_LIMIT,
+            "Steam exibiu página Ops!/erro de solicitação — ação manual necessária",
+        )
+
     markers = [
         ("captcha", ActionErrorCode.CAPTCHA, "CAPTCHA detectado"),
         ("steam guard", ActionErrorCode.STEAM_GUARD, "Steam Guard detectado"),
-        ("too many requests", ActionErrorCode.RATE_LIMIT, "Possível bloqueio temporário"),
         ("access denied", ActionErrorCode.RATE_LIMIT, "Acesso negado / bloqueio"),
+        ("acesso negado", ActionErrorCode.RATE_LIMIT, "Acesso negado / bloqueio"),
     ]
     for token, code, message in markers:
-        if token in content or token in url:
+        if token in haystack:
             raise ActionError(code, f"{message} — ação manual necessária")
 
 
@@ -164,6 +205,9 @@ async def _any_visible(page: Page, selectors: tuple[str, ...], timeout: int = 25
 
 async def navigate(browser: BrowserManager, url: str, entity: str) -> Page:
     await browser.ensure_open()
+    await rate_limit_guard.human_pause(
+        min_ms=500, max_ms=1400, reason="Pausa antes de navegar"
+    )
     try:
         await browser.goto(url)
     except PlaywrightTimeoutError as exc:
@@ -180,11 +224,22 @@ async def navigate(browser: BrowserManager, url: str, entity: str) -> Page:
         ) from exc
     page = browser.page
     await detect_blocking_conditions(page)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        runtime = await get_or_create_runtime(session)
+        await rate_limit_guard.settle_after_navigation(runtime)
+    await detect_blocking_conditions(page)
     return page
 
 
-async def safe_click(locator: Locator) -> None:
+async def safe_click(locator: Locator, page: Page | None = None) -> None:
     settings = get_settings()
+    factory = get_session_factory()
+    async with factory() as session:
+        runtime = await get_or_create_runtime(session)
+        await rate_limit_guard.pause_before_click(runtime)
+
     try:
         await locator.scroll_into_view_if_needed(timeout=settings.element_timeout_ms)
     except Exception:
@@ -197,6 +252,9 @@ async def safe_click(locator: Locator) -> None:
             "Timeout ao clicar no elemento",
             retryable=True,
         ) from exc
+    if page is not None:
+        await page.wait_for_timeout(800)
+        await detect_blocking_conditions(page)
 
 
 class CuratorStyleFollowAction:
@@ -257,13 +315,14 @@ class CuratorStyleFollowAction:
             )
 
         await _step(step_callback, "Clicando em seguir")
-        await safe_click(button)
+        await safe_click(button, page)
 
         await _step(step_callback, "Confirmando resultado")
         await page.wait_for_timeout(900)
         if not await _any_visible(page, CURATOR_STYLE_FOLLOWING_SELECTORS, timeout=5000):
             # Recarrega e confere
             await self.browser.reload()
+            await detect_blocking_conditions(page)
             if not await _any_visible(page, CURATOR_STYLE_FOLLOWING_SELECTORS, timeout=5000):
                 raise ActionError(
                     ActionErrorCode.CONFIRMATION_MISSING,
@@ -304,10 +363,11 @@ class FollowGroupAction:
             )
 
         await _step(step_callback, "Clicando em entrar no grupo")
-        await safe_click(button)
+        await safe_click(button, page)
 
         await _step(step_callback, "Confirmando resultado")
         await page.wait_for_timeout(900)
+        await detect_blocking_conditions(page)
         if not await _any_visible(
             page,
             ("text=Leave Group", "text=Sair do grupo", "text=You're In", "text=Você faz parte"),
@@ -350,8 +410,9 @@ class WishlistAndFollowAppAction:
                     "Botão de lista de desejos não encontrado",
                     retryable=True,
                 )
-            await safe_click(wishlist_btn)
+            await safe_click(wishlist_btn, page)
             await page.wait_for_timeout(1000)
+            await detect_blocking_conditions(page)
             if not await self._wishlist_already_done(page):
                 # Steam às vezes esconde a área e mostra success
                 if not await _any_visible(page, WISHLIST_DONE_SELECTORS, timeout=4000):
@@ -363,10 +424,20 @@ class WishlistAndFollowAppAction:
             wishlist_done = True
             parts.append("adicionado à lista de desejos")
 
+        await _step(step_callback, "Pausa entre wishlist e follow")
+        factory = get_session_factory()
+        async with factory() as session:
+            runtime = await get_or_create_runtime(session)
+            await rate_limit_guard.pause_between_subactions(runtime)
+
         await _step(step_callback, "Atualizando página")
+        await rate_limit_guard.human_pause(min_ms=800, max_ms=1600)
         await self.browser.reload()
         page = self.browser.page
         await detect_blocking_conditions(page)
+        async with factory() as session:
+            runtime = await get_or_create_runtime(session)
+            await rate_limit_guard.settle_after_navigation(runtime)
 
         await _step(step_callback, "Verificando follow do app")
         if await _any_visible(page, APP_FOLLOWING_SELECTORS):
@@ -390,10 +461,12 @@ class WishlistAndFollowAppAction:
             except Exception:
                 pass
 
-            await safe_click(follow_btn)
+            await safe_click(follow_btn, page)
             await page.wait_for_timeout(900)
+            await detect_blocking_conditions(page)
             if not await _any_visible(page, APP_FOLLOWING_SELECTORS, timeout=5000):
                 await self.browser.reload()
+                await detect_blocking_conditions(page)
                 if not await _any_visible(page, APP_FOLLOWING_SELECTORS, timeout=5000):
                     raise ActionError(
                         ActionErrorCode.CONFIRMATION_MISSING,
