@@ -15,10 +15,23 @@ class InvalidSteamUrlError(ValueError):
     pass
 
 
+def looks_like_steam_url(url: str) -> bool:
+    """Descarta rapidamente links que não mencionam steam."""
+    return "steam" in (url or "").lower()
+
+
+def filter_steam_urls(urls: list[str]) -> list[str]:
+    """Mantém só linhas que parecem Steam; ignora o resto sem erro."""
+    return [u.strip() for u in urls if u.strip() and looks_like_steam_url(u)]
+
+
 def validate_steam_url(url: str) -> str:
     raw = (url or "").strip()
     if not raw:
         raise InvalidSteamUrlError("URL vazia")
+
+    if not looks_like_steam_url(raw):
+        raise InvalidSteamUrlError("URL não parece ser da Steam")
 
     parsed = urlparse(raw)
     scheme = (parsed.scheme or "").lower()

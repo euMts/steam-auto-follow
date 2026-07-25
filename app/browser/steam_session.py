@@ -88,7 +88,9 @@ class SteamSessionService:
             values.community.sessionid = self._read_cookie(
                 rows, "community", "sessionid"
             )
-        except CookieCryptoError:
+        except CookieCryptoError as exc:
+            # Não apaga o banco — só indica falha de chave para o operador
+            print(f"[cookies] Falha ao descriptografar ({len(rows)} registro(s)): {exc}")
             return CookieValues()
         return values
 

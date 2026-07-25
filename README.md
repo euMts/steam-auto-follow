@@ -12,7 +12,9 @@ Você cola URLs da Steam no dashboard. O sistema detecta o tipo pela URL e execu
 | `/app/` | Lista de desejos + seguir |
 | `/groups/` | Entrar no grupo |
 
-Usa cookies **separados** da Store e da Community (`steamLoginSecure` + `sessionid` em cada uma), criptografados localmente. Roda só em `127.0.0.1`.
+Usa cookies **separados** da Store e da Community (`steamLoginSecure` + `sessionid` em cada uma), criptografados em `data/app.db`. Roda só em `127.0.0.1`.
+
+A chave `COOKIE_ENCRYPTION_KEY` fica no `.env` e também em `data/.cookie_key`, para os cookies sobreviverem a reinícios.
 
 ## Como rodar
 
@@ -47,4 +49,4 @@ Uso pessoal/local. Não contorna CAPTCHA, Steam Guard nem bloqueios da Steam.
 
 Se aparecer **Ops! / solicitações demais**, a fila pausa sozinha e entra em cooldown. Aguarde no Chromium e clique em **Retomar fila**.
 
-Prevenção incluída: intervalo + jitter, pausas humanas, limite/hora, backoff adaptativo, cookies/auth em cache (sem reaplicar a cada tarefa).
+Prevenção incluída: intervalo + jitter, pausas humanas, limite/hora, backoff adaptativo, cookies/auth em cache.

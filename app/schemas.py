@@ -6,7 +6,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.models import ActionType, AuthStatus, TaskStatus
-from app.utils.url_validation import detect_action_type, validate_steam_url
+from app.utils.url_validation import (
+    detect_action_type,
+    filter_steam_urls,
+    looks_like_steam_url,
+    validate_steam_url,
+)
 
 
 class DomainCookieInput(BaseModel):
@@ -93,12 +98,23 @@ class TaskCreate(BaseModel):
         lines = [line.strip() for line in value.splitlines() if line.strip()]
         if not lines:
             raise ValueError("Informe ao menos uma URL")
-        for line in lines:
+        steam_lines = filter_steam_urls(lines)
+        if not steam_lines:
+            raise ValueError(
+                "Nenhuma URL da Steam encontrada. "
+                "Links sem 'steam' são ignorados automaticamente."
+            )
+        for line in steam_lines:
             validate_steam_url(line)
         return value
 
     def parsed_urls(self) -> list[str]:
-        return [line.strip() for line in self.urls.splitlines() if line.strip()]
+        lines = [line.strip() for line in self.urls.splitlines() if line.strip()]
+        return filter_steam_urls(lines)
+
+    def skipped_urls(self) -> list[str]:
+        lines = [line.strip() for line in self.urls.splitlines() if line.strip()]
+        return [u for u in lines if not looks_like_steam_url(u)]
 
     def resolved_items(self) -> list[tuple[str, str]]:
         """Retorna pares (url, action_type) já resolvidos."""

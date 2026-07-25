@@ -103,9 +103,25 @@ class TestTaskCreateValidation:
         assert items[2][1] == "wishlist_and_follow_app"
         assert items[3][1] == "follow_curator"
 
-    def test_rejects_invalid_line(self):
+    def test_ignores_non_steam_links(self):
+        payload = TaskCreate(
+            urls=(
+                "https://google.com/\n"
+                "https://store.steampowered.com/curator/1/\n"
+                "not-a-link\n"
+                "https://example.com/page"
+            )
+        )
+        assert payload.parsed_urls() == ["https://store.steampowered.com/curator/1/"]
+        assert len(payload.skipped_urls()) == 3
+
+    def test_rejects_when_only_non_steam(self):
         with pytest.raises(ValidationError):
-            TaskCreate(urls="https://evil.example/\nhttps://store.steampowered.com/curator/1/")
+            TaskCreate(urls="https://google.com/\nhttps://example.com/")
+
+    def test_rejects_invalid_steam_line(self):
+        with pytest.raises(ValidationError):
+            TaskCreate(urls="https://steam.example.evil/\nhttps://store.steampowered.com/curator/1/")
 
 
 class TestSanitization:

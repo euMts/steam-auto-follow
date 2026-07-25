@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select
 
 from app.browser.manager import browser_manager
-from app.config import BASE_DIR, ensure_data_dirs, get_settings
+from app.config import BASE_DIR, ensure_data_dirs, ensure_encryption_key, get_settings
 from app.database import close_db, get_session_factory, init_db
+from app.models import EncryptedCookie
 from app.routes import browser, dashboard, settings, tasks
 from app.services.queue_service import append_log, get_or_create_runtime, queue_service
 from app.services.task_worker import task_worker
@@ -17,26 +18,15 @@ from app.services.task_worker import task_worker
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     ensure_data_dirs()
+    key = ensure_encryption_key()
     settings = get_settings()
-    if not settings.cookie_encryption_key.strip():
-        # Gera chave temporária em memória se ausente — avisa nos logs
-        from app.utils.crypto import generate_encryption_key
-        import os
-
-        generated = generate_encryption_key()
-        os.environ["COOKIE_ENCRYPTION_KEY"] = generated
-        get_settings.cache_clear()
-        print(
-            "[AVISO] COOKIE_ENCRYPTION_KEY não definida. "
-            "Uma chave temporária foi gerada para esta execução. "
-            "Defina no .env para persistir cookies entre reinícios."
-        )
+    print(f"[config] DB: {settings.database_url}")
+    print(f"[config] COOKIE_ENCRYPTION_KEY carregada ({len(key)} chars)")
 
     await init_db()
     factory = get_session_factory()
     async with factory() as session:
         runtime = await get_or_create_runtime(session)
-        # Sincroniza defaults do .env na primeira execução
         cfg = get_settings()
         if runtime.min_task_interval_seconds in (8.0, 15.0, 20.0):
             runtime.min_task_interval_seconds = cfg.min_task_interval_seconds
@@ -46,12 +36,22 @@ async def lifespan(_app: FastAPI):
             runtime.element_timeout_ms = cfg.element_timeout_ms
         if runtime.max_attempts == 3:
             runtime.max_attempts = cfg.max_attempts
-        # Garante defaults de pacing em bancos antigos
         if getattr(runtime, "jitter_seconds", None) is None:
             runtime.jitter_seconds = cfg.jitter_seconds
         if getattr(runtime, "max_actions_per_hour", None) in (None, 0):
             runtime.max_actions_per_hour = cfg.max_actions_per_hour
         await session.commit()
+
+        cookie_count = int(
+            (
+                await session.execute(select(func.count(EncryptedCookie.id)))
+            ).scalar_one()
+        )
+        await append_log(
+            "INFO",
+            "system",
+            f"Banco pronto — {cookie_count} cookie(s) criptografado(s) persistido(s)",
+        )
 
         recovered = await queue_service.recover_interrupted(session)
         if recovered:
@@ -63,7 +63,6 @@ async def lifespan(_app: FastAPI):
 
     task_worker.start()
     await append_log("INFO", "system", "Aplicação iniciada")
-    # Acorda worker caso haja pendentes
     task_worker.wake()
 
     yield

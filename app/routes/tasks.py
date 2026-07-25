@@ -36,6 +36,14 @@ async def create_tasks(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    skipped = payload.skipped_urls()
+    if skipped:
+        await append_log(
+            "INFO",
+            "queue",
+            f"{len(skipped)} link(s) ignorado(s) por não conter 'steam'",
+        )
+
     tasks = await queue_service.create_task_items(
         session,
         items=items,
