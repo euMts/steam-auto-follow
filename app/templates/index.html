@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steam Task Runner</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <div>
+        <h1>Steam Task Runner</h1>
+        <p>Automação local controlada · apenas 127.0.0.1</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span id="ws-status" class="pill pill-warn">WebSocket: conectando…</span>
+      <span id="clock" class="pill">--:--:--</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card" id="card-browser">
+      <div class="card-head">
+        <h2>Estado do navegador</h2>
+        <span id="browser-badge" class="badge badge-muted">Fechado</span>
+      </div>
+      <dl class="meta-grid">
+        <div><dt>Página atual</dt><dd id="browser-url">—</dd></div>
+        <div><dt>Última navegação</dt><dd id="browser-nav">—</dd></div>
+        <div><dt>Última ação</dt><dd id="browser-action">—</dd></div>
+      </dl>
+      <div class="actions">
+        <button type="button" data-action="browser-start">Iniciar navegador</button>
+        <button type="button" class="secondary" data-action="browser-restart">Reiniciar</button>
+        <button type="button" class="danger" data-action="browser-close">Fechar</button>
+      </div>
+    </section>
+
+    <section class="card" id="card-session">
+      <div class="card-head">
+        <h2>Sessão Steam</h2>
+        <span id="auth-badge" class="badge badge-muted">Não verificado</span>
+      </div>
+      <form id="cookie-form" class="form-grid" autocomplete="off">
+        <label>
+          steamLoginSecure
+          <input type="password" name="steamLoginSecure" placeholder="Cole o cookie aqui" required />
+        </label>
+        <label>
+          sessionid
+          <input type="password" name="sessionid" placeholder="Cole o cookie aqui" required />
+        </label>
+        <div class="actions">
+          <button type="submit">Salvar cookies</button>
+          <button type="button" class="secondary" data-action="session-verify">Verificar sessão</button>
+          <button type="button" class="secondary" data-action="session-apply">Reaplicar cookies</button>
+          <button type="button" class="danger" data-action="session-clear">Remover cookies</button>
+        </div>
+      </form>
+      <dl class="meta-grid">
+        <div><dt>Cookies</dt><dd id="cookie-status">Não configurado</dd></div>
+        <div><dt>Conta</dt><dd id="account-name">—</dd></div>
+        <div><dt>Última verificação</dt><dd id="auth-checked">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="card" id="card-queue">
+      <div class="card-head">
+        <h2>Fila</h2>
+        <span id="queue-badge" class="badge badge-ok">Ativa</span>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><span id="stat-pending">0</span><label>Pendentes</label></div>
+        <div class="stat"><span id="stat-running">0</span><label>Em execução</label></div>
+        <div class="stat"><span id="stat-completed">0</span><label>Concluídas</label></div>
+        <div class="stat"><span id="stat-failed">0</span><label>Falhas</label></div>
+      </div>
+      <p id="manual-banner" class="banner hidden"></p>
+      <div class="actions">
+        <button type="button" class="secondary" data-action="queue-pause">Pausar fila</button>
+        <button type="button" data-action="queue-resume">Retomar fila</button>
+        <button type="button" class="secondary" data-action="queue-clear">Limpar concluídas</button>
+        <button type="button" class="secondary" data-action="queue-retry-failed">Tentar falhas novamente</button>
+      </div>
+    </section>
+
+    <section class="card" id="card-current">
+      <div class="card-head">
+        <h2>Tarefa atual</h2>
+      </div>
+      <dl class="meta-grid">
+        <div><dt>ID</dt><dd id="current-id">—</dd></div>
+        <div><dt>URL</dt><dd id="current-url">—</dd></div>
+        <div><dt>Ação</dt><dd id="current-action">—</dd></div>
+        <div><dt>Etapa</dt><dd id="current-step">—</dd></div>
+        <div><dt>Início</dt><dd id="current-started">—</dd></div>
+        <div><dt>Tentativa</dt><dd id="current-attempts">—</dd></div>
+        <div class="full"><dt>Status</dt><dd id="current-message">Nenhuma tarefa em execução</dd></div>
+      </dl>
+    </section>
+
+    <section class="card span-2" id="card-add">
+      <div class="card-head">
+        <h2>Adicionar tarefas</h2>
+      </div>
+      <form id="task-form" class="form-grid">
+        <label class="full">
+          URLs (uma por linha)
+          <textarea name="urls" rows="5" placeholder="https://store.steampowered.com/curator/43562394/" required></textarea>
+        </label>
+        <label>
+          Tipo de ação
+          <select name="action_type">
+            <option value="follow_curator">Seguir curador da Steam</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit">Salvar e processar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card span-2" id="card-settings">
+      <div class="card-head">
+        <h2>Limites de execução</h2>
+      </div>
+      <form id="settings-form" class="form-grid form-inline">
+        <label>
+          Intervalo mínimo (s)
+          <input type="number" name="min_task_interval_seconds" min="1" max="300" step="1" />
+        </label>
+        <label>
+          Timeout navegação (ms)
+          <input type="number" name="navigation_timeout_ms" min="5000" max="180000" step="1000" />
+        </label>
+        <label>
+          Timeout elementos (ms)
+          <input type="number" name="element_timeout_ms" min="2000" max="120000" step="1000" />
+        </label>
+        <label>
+          Máx. tentativas
+          <input type="number" name="max_attempts" min="1" max="10" step="1" />
+        </label>
+        <div class="actions">
+          <button type="submit" class="secondary">Salvar configurações</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card span-2" id="card-tasks">
+      <div class="card-head">
+        <h2>Lista de tarefas</h2>
+        <span id="tasks-count" class="muted">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>URL</th>
+              <th>Ação</th>
+              <th>Status</th>
+              <th>Tentativas</th>
+              <th>Resultado</th>
+              <th>Criação</th>
+              <th>Início</th>
+              <th>Fim</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-body">
+            <tr><td colspan="10" class="empty">Nenhuma tarefa cadastrada</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card span-2" id="card-logs">
+      <div class="card-head">
+        <h2>Logs recentes</h2>
+      </div>
+      <pre id="log-terminal" class="terminal" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <dialog id="error-dialog">
+    <form method="dialog" class="dialog-body">
+      <h3>Detalhes do erro</h3>
+      <p id="error-dialog-text"></p>
+      <div id="error-dialog-shot" class="hidden"></div>
+      <menu>
+        <button value="close">Fechar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
