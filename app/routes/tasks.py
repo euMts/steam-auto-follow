@@ -31,11 +31,14 @@ async def create_tasks(
     session: AsyncSession = Depends(get_db),
 ) -> TaskListOut:
     runtime = await get_or_create_runtime(session)
-    urls = payload.parsed_urls()
-    tasks = await queue_service.create_tasks(
+    try:
+        items = payload.resolved_items()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    tasks = await queue_service.create_task_items(
         session,
-        urls=urls,
-        action_type=payload.action_type.value,
+        items=items,
         max_attempts=runtime.max_attempts,
     )
     await append_log(

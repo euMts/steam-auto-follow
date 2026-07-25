@@ -17,11 +17,19 @@ ALLOWED_STEAM_DOMAINS = (
     "checkout.steampowered.com",
 )
 
+# Mesmos nomes (steamLoginSecure / sessionid) nos dois sites principais.
 STEAM_COOKIE_DOMAINS = (
     "store.steampowered.com",
+    ".steampowered.com",
     "steamcommunity.com",
+    ".steamcommunity.com",
     "help.steampowered.com",
     "checkout.steampowered.com",
+)
+
+STEAM_COOKIE_BOOTSTRAP_URLS = (
+    "https://store.steampowered.com/",
+    "https://steamcommunity.com/",
 )
 
 

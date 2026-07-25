@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.models import ActionType, AuthStatus, TaskStatus
-from app.utils.url_validation import validate_steam_url
+from app.utils.url_validation import detect_action_type, validate_steam_url
 
 
 class CookieInput(BaseModel):
@@ -52,7 +52,7 @@ class SettingsOut(BaseModel):
 
 class TaskCreate(BaseModel):
     urls: str = Field(..., min_length=1, description="Uma ou mais URLs, uma por linha")
-    action_type: ActionType = ActionType.FOLLOW_CURATOR
+    action_type: ActionType = ActionType.AUTO
 
     @field_validator("urls")
     @classmethod
@@ -66,6 +66,17 @@ class TaskCreate(BaseModel):
 
     def parsed_urls(self) -> list[str]:
         return [line.strip() for line in self.urls.splitlines() if line.strip()]
+
+    def resolved_items(self) -> list[tuple[str, str]]:
+        """Retorna pares (url, action_type) já resolvidos."""
+        items: list[tuple[str, str]] = []
+        for url in self.parsed_urls():
+            if self.action_type == ActionType.AUTO:
+                action = detect_action_type(url)
+            else:
+                action = self.action_type.value
+            items.append((url, action))
+        return items
 
 
 class TaskOut(BaseModel):

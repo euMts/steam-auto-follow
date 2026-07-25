@@ -6,6 +6,7 @@ from app.utils.crypto import (
 )
 from app.utils.url_validation import (
     InvalidSteamUrlError,
+    detect_action_type,
     mask_secret,
     sanitize_log_message,
     validate_steam_url,
@@ -15,6 +16,7 @@ __all__ = [
     "CookieCryptoError",
     "InvalidSteamUrlError",
     "decrypt_value",
+    "detect_action_type",
     "encrypt_value",
     "generate_encryption_key",
     "mask_secret",

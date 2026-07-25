@@ -57,6 +57,7 @@
           sessionid
           <input type="password" name="sessionid" placeholder="Cole o cookie aqui" required />
         </label>
+        <p class="muted full">Mesmos nomes nos domínios Store e Community — um único par cobre os dois.</p>
         <div class="actions">
           <button type="submit">Salvar cookies</button>
           <button type="button" class="secondary" data-action="session-verify">Verificar sessão</button>
@@ -113,14 +114,18 @@
       <form id="task-form" class="form-grid">
         <label class="full">
           URLs (uma por linha)
-          <textarea name="urls" rows="5" placeholder="https://store.steampowered.com/curator/43562394/" required></textarea>
+          <textarea name="urls" rows="5" placeholder="https://store.steampowered.com/curator/43562394/&#10;https://store.steampowered.com/publisher/asd/&#10;https://steamcommunity.com/groups/63eReg" required></textarea>
         </label>
         <label>
           Tipo de ação
           <select name="action_type">
+            <option value="auto">Detectar pela URL</option>
             <option value="follow_curator">Seguir curador da Steam</option>
+            <option value="follow_publisher">Seguir publisher da Steam</option>
+            <option value="follow_group">Entrar no grupo da Community</option>
           </select>
         </label>
+        <p class="muted full">Os cookies <code>steamLoginSecure</code> e <code>sessionid</code> valem para Store e Community.</p>
         <div class="actions">
           <button type="submit">Salvar e processar</button>
         </div>

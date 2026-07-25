@@ -21,6 +21,9 @@
 
   const ACTION_LABELS = {
     follow_curator: "Seguir curador",
+    follow_publisher: "Seguir publisher",
+    follow_group: "Entrar no grupo",
+    auto: "Detectar pela URL",
   };
 
   const STATUS_CLASS = {

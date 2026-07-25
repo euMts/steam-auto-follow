@@ -31,10 +31,22 @@ class QueueService:
         action_type: str,
         max_attempts: int,
     ) -> list[Task]:
+        return await self.create_task_items(
+            session,
+            items=[(url, action_type) for url in urls],
+            max_attempts=max_attempts,
+        )
+
+    async def create_task_items(
+        self,
+        session: AsyncSession,
+        items: list[tuple[str, str]],
+        max_attempts: int,
+    ) -> list[Task]:
         result = await session.execute(select(func.coalesce(func.max(Task.position), 0)))
         position = int(result.scalar_one())
         tasks: list[Task] = []
-        for url in urls:
+        for url, action_type in items:
             position += 1
             task = Task(
                 url=url,

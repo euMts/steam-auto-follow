@@ -4,12 +4,20 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas import TaskCreate
-from app.utils.url_validation import InvalidSteamUrlError, mask_secret, sanitize_log_message, validate_steam_url
+from app.utils.url_validation import InvalidSteamUrlError, detect_action_type, mask_secret, sanitize_log_message, validate_steam_url
 
 
 class TestValidateSteamUrl:
     def test_accepts_curator_https(self):
         url = "https://store.steampowered.com/curator/43562394/"
+        assert validate_steam_url(url) == url
+
+    def test_accepts_publisher(self):
+        url = "https://store.steampowered.com/publisher/asd/"
+        assert validate_steam_url(url) == url
+
+    def test_accepts_group(self):
+        url = "https://steamcommunity.com/groups/63eReg"
         assert validate_steam_url(url) == url
 
     def test_accepts_community(self):
@@ -45,6 +53,24 @@ class TestValidateSteamUrl:
             validate_steam_url("https://192.168.0.1/")
 
 
+class TestDetectActionType:
+    def test_curator(self):
+        assert detect_action_type("https://store.steampowered.com/curator/43562394/") == "follow_curator"
+
+    def test_publisher(self):
+        assert detect_action_type("https://store.steampowered.com/publisher/asd/") == "follow_publisher"
+
+    def test_developer(self):
+        assert detect_action_type("https://store.steampowered.com/developer/valve/") == "follow_publisher"
+
+    def test_group(self):
+        assert detect_action_type("https://steamcommunity.com/groups/63eReg") == "follow_group"
+
+    def test_unknown(self):
+        with pytest.raises(InvalidSteamUrlError):
+            detect_action_type("https://store.steampowered.com/")
+
+
 class TestTaskCreateValidation:
     def test_parses_multiple_urls(self):
         payload = TaskCreate(
@@ -54,6 +80,18 @@ class TestTaskCreateValidation:
             )
         )
         assert len(payload.parsed_urls()) == 2
+
+    def test_auto_resolves_mixed_urls(self):
+        payload = TaskCreate(
+            urls=(
+                "https://store.steampowered.com/publisher/asd/\n"
+                "https://steamcommunity.com/groups/63eReg"
+            ),
+            action_type="auto",
+        )
+        items = payload.resolved_items()
+        assert items[0][1] == "follow_publisher"
+        assert items[1][1] == "follow_group"
 
     def test_rejects_invalid_line(self):
         with pytest.raises(ValidationError):

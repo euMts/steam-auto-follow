@@ -30,7 +30,10 @@ class TaskStatus(str, enum.Enum):
 
 
 class ActionType(str, enum.Enum):
+    AUTO = "auto"
     FOLLOW_CURATOR = "follow_curator"
+    FOLLOW_PUBLISHER = "follow_publisher"
+    FOLLOW_GROUP = "follow_group"
 
 
 class AuthStatus(str, enum.Enum):

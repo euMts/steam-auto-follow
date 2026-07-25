@@ -48,6 +48,26 @@ def validate_steam_url(url: str) -> str:
     return raw
 
 
+def detect_action_type(url: str) -> str:
+    """Infere o tipo de ação com base no caminho da URL Steam."""
+    parsed = urlparse(url.strip())
+    path = (parsed.path or "").lower()
+    host = (parsed.hostname or "").lower()
+
+    if "/curator/" in path:
+        return "follow_curator"
+    if "/publisher/" in path or "/developer/" in path:
+        return "follow_publisher"
+    if "/groups/" in path or (host.endswith("steamcommunity.com") and "/gid/" in path):
+        return "follow_group"
+
+    raise InvalidSteamUrlError(
+        "Não foi possível detectar a ação pela URL. "
+        "Use /curator/, /publisher/, /developer/ ou /groups/, "
+        "ou escolha o tipo de ação manualmente."
+    )
+
+
 def mask_secret(value: str | None, keep: int = 3) -> str | None:
     if not value:
         return None

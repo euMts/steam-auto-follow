@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.browser.manager import BrowserManager, BrowserNotRunningError, browser_manager
-from app.config import STEAM_COOKIE_DOMAINS, get_settings
+from app.config import STEAM_COOKIE_BOOTSTRAP_URLS, STEAM_COOKIE_DOMAINS, get_settings
 from app.models import AuthStatus, EncryptedCookie
 from app.utils.crypto import CookieCryptoError, decrypt_value, encrypt_value
 from app.utils.url_validation import mask_secret
@@ -115,9 +115,10 @@ class SteamSessionService:
             self._auth_status = AuthStatus.COOKIES_MISSING
             raise CookieCryptoError("Cookies da Steam não estão configurados")
 
-        settings = get_settings()
         await self.browser.ensure_open()
-        await self.browser.goto(settings.steam_base_url.rstrip("/") + "/")
+
+        # Abre a Store primeiro (origem válida) antes de injetar cookies.
+        await self.browser.goto(STEAM_COOKIE_BOOTSTRAP_URLS[0])
 
         payload = []
         assert cookies.steam_login_secure and cookies.sessionid
@@ -143,8 +144,13 @@ class SteamSessionService:
             )
 
         await self.browser.context.add_cookies(payload)
-        await self.browser.reload()
-        self.browser.state.last_action = "Cookies aplicados"
+
+        # Garante sessão nos dois sites: Store e Community (mesmos nomes de cookie).
+        for url in STEAM_COOKIE_BOOTSTRAP_URLS:
+            await self.browser.goto(url)
+            await self.browser.reload()
+
+        self.browser.state.last_action = "Cookies aplicados (Store + Community)"
 
     async def verify_session(
         self,

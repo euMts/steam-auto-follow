@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from playwright.async_api import Locator, Page, TimeoutError as PlaywrightTimeoutError
@@ -43,37 +43,138 @@ class ActionResult:
     code: ActionErrorCode | None = None
 
 
-FOLLOW_BUTTON_SELECTORS = [
-    # Semântico / texto
-    'role=button[name=/seguir/i]',
-    "text=Seguir",
-    "text=Follow",
-    # CSS estável
-    "#header_curator_details .follow_controls .follow_btn",
-    "#header_curator_details .follow_btn",
-    ".follow_controls .follow_btn",
-    "div.follow_btn",
-    # XPath relativo
-    'xpath=//*[@id="header_curator_details"]//div[contains(@class,"follow_btn")]',
-    'xpath=//*[@id="header_curator_details"]/div[2]/div[1]',
-    # XPath absoluto (último recurso)
-    'xpath=/html/body/div[1]/div[6]/div[7]/div[3]/div[2]/div/div/div[2]/div[2]/div[1]',
-]
-
 UNFOLLOW_HINTS = (
     "deixar de seguir",
     "parar de seguir",
     "unfollow",
     "following",
     "seguindo",
+    "leave group",
+    "sair do grupo",
+    "you're in",
+    "você faz parte",
+    "membro",
 )
 
-FOLLOW_HINTS = ("seguir", "follow")
+FOLLOW_HINTS = (
+    "seguir",
+    "follow",
+    "join group",
+    "entrar no grupo",
+    "unir-se ao grupo",
+    "participar",
+)
 
 
-class FollowCuratorAction:
-    def __init__(self, browser: BrowserManager) -> None:
+@dataclass(frozen=True)
+class FollowActionConfig:
+    label: str
+    entity_name: str
+    selectors: tuple[str, ...]
+    already_done_message: str
+    success_message: str
+    confirm_selectors: tuple[str, ...] = field(default_factory=tuple)
+
+
+CURATOR_SELECTORS = (
+    'role=button[name=/seguir/i]',
+    "text=Seguir",
+    "text=Follow",
+    "#header_curator_details .follow_controls .follow_btn",
+    "#header_curator_details .follow_btn",
+    ".follow_controls .follow_btn",
+    "div.follow_btn",
+    'xpath=//*[@id="header_curator_details"]//div[contains(@class,"follow_btn")]',
+    'xpath=//*[@id="header_curator_details"]/div[2]/div[1]',
+    'xpath=/html/body/div[1]/div[6]/div[7]/div[3]/div[2]/div/div/div[2]/div[2]/div[1]',
+)
+
+PUBLISHER_SELECTORS = (
+    'role=button[name=/seguir/i]',
+    "text=Seguir",
+    "text=Follow",
+    ".follow_btn",
+    ".follow_controls .follow_btn",
+    ".queue_control_button.follow",
+    "#wishlist_follow",
+    "div.btn_green_steamui.btn_medium",
+    'xpath=//*[contains(@class,"follow_btn")]',
+    'xpath=//*[contains(@class,"follow_controls")]//*[contains(@class,"btn")]',
+)
+
+GROUP_SELECTORS = (
+    'role=button[name=/entrar no grupo/i]',
+    'role=button[name=/join group/i]',
+    'role=link[name=/entrar no grupo/i]',
+    'role=link[name=/join group/i]',
+    "text=Entrar no grupo",
+    "text=Unir-se ao grupo",
+    "text=Join Group",
+    "text=Seguir",
+    "text=Follow",
+    "#join_group_form .btn_green_white_innerfade",
+    ".grouppage_join_area .btn_green_white_innerfade",
+    ".grouppage_join_area a.btn_green_white_innerfade",
+    "a.btn_green_white_innerfade",
+    'xpath=//*[contains(@class,"grouppage_join_area")]//a[contains(@class,"btn")]',
+    'xpath=//*[@id="join_group_form"]//a[contains(@class,"btn")]',
+)
+
+ACTION_CONFIGS: dict[str, FollowActionConfig] = {
+    "follow_curator": FollowActionConfig(
+        label="Seguir curador",
+        entity_name="curador",
+        selectors=CURATOR_SELECTORS,
+        already_done_message="Curador já estava sendo seguido",
+        success_message="Curador seguido com sucesso",
+        confirm_selectors=(
+            "text=Seguindo",
+            "text=Following",
+            "text=Deixar de seguir",
+            "#header_curator_details .follow_btn.following",
+            "#header_curator_details .follow_controls .following",
+        ),
+    ),
+    "follow_publisher": FollowActionConfig(
+        label="Seguir publisher",
+        entity_name="publisher",
+        selectors=PUBLISHER_SELECTORS,
+        already_done_message="Publisher já estava sendo seguido",
+        success_message="Publisher seguido com sucesso",
+        confirm_selectors=(
+            "text=Seguindo",
+            "text=Following",
+            "text=Deixar de seguir",
+            "text=Unfollow",
+            ".follow_btn.following",
+            ".following",
+        ),
+    ),
+    "follow_group": FollowActionConfig(
+        label="Entrar no grupo",
+        entity_name="grupo",
+        selectors=GROUP_SELECTORS,
+        already_done_message="Já é membro do grupo",
+        success_message="Entrou no grupo com sucesso",
+        confirm_selectors=(
+            "text=You're In",
+            "text=Leave Group",
+            "text=Sair do grupo",
+            "text=Você faz parte",
+            "text=Seguindo",
+            "text=Following",
+            ".grouppage_join_area .btn_grey_black",
+        ),
+    ),
+}
+
+
+class FollowSteamEntityAction:
+    """Ação genérica de seguir/entrar para curador, publisher ou grupo."""
+
+    def __init__(self, browser: BrowserManager, config: FollowActionConfig) -> None:
         self.browser = browser
+        self.config = config
 
     async def run(self, url: str, *, step_callback=None) -> ActionResult:
         async def step(name: str) -> None:
@@ -81,7 +182,7 @@ class FollowCuratorAction:
                 await step_callback(name)
 
         settings = get_settings()
-        page = await self.browser.ensure_open()
+        await self.browser.ensure_open()
 
         await step("Abrindo URL")
         try:
@@ -89,7 +190,7 @@ class FollowCuratorAction:
         except PlaywrightTimeoutError as exc:
             raise ActionError(
                 ActionErrorCode.TIMEOUT,
-                "Timeout ao navegar para a URL do curador",
+                f"Timeout ao navegar para a URL do {self.config.entity_name}",
                 retryable=True,
             ) from exc
         except Exception as exc:  # noqa: BLE001
@@ -99,6 +200,7 @@ class FollowCuratorAction:
                 retryable=True,
             ) from exc
 
+        page = self.browser.page
         await self._detect_blocking_conditions(page)
 
         await step("Procurando botão de seguir")
@@ -110,7 +212,7 @@ class FollowCuratorAction:
         if state == "following":
             return ActionResult(
                 success=True,
-                message="Curador já estava sendo seguido",
+                message=self.config.already_done_message,
                 already_done=True,
                 code=ActionErrorCode.ALREADY_FOLLOWING,
             )
@@ -147,7 +249,7 @@ class FollowCuratorAction:
             )
 
         await step("Finalizando")
-        return ActionResult(success=True, message="Curador seguido com sucesso")
+        return ActionResult(success=True, message=self.config.success_message)
 
     async def _detect_blocking_conditions(self, page: Page) -> None:
         url = page.url.lower()
@@ -157,7 +259,7 @@ class FollowCuratorAction:
         except Exception:
             pass
 
-        if "login" in url and "steampowered" in url:
+        if "login" in url and ("steampowered" in url or "steamcommunity" in url):
             raise ActionError(
                 ActionErrorCode.LOGIN_PAGE,
                 "Página de login detectada — ação manual necessária",
@@ -177,7 +279,7 @@ class FollowCuratorAction:
         settings = get_settings()
         last_error: Exception | None = None
 
-        for selector in FOLLOW_BUTTON_SELECTORS:
+        for selector in self.config.selectors:
             try:
                 locator = page.locator(selector).first
                 count = await locator.count()
@@ -197,14 +299,8 @@ class FollowCuratorAction:
                 except Exception:
                     text = ""
 
-                # Evita clicar em "Deixar de seguir"
-                if any(h in text for h in UNFOLLOW_HINTS) and not any(
-                    h == text or text.startswith(h) for h in FOLLOW_HINTS if h == "seguir"
-                ):
-                    if "deixar" in text or "parar" in text or "unfollow" in text:
-                        # Já seguindo — retorna o locator para inspeção de estado
-                        return locator
-                    continue
+                if any(h in text for h in ("deixar", "parar", "unfollow", "leave group", "sair do grupo")):
+                    return locator
 
                 return locator
             except ActionError:
@@ -229,8 +325,7 @@ class FollowCuratorAction:
             return "invisible"
 
         try:
-            disabled = await button.is_disabled()
-            if disabled:
+            if await button.is_disabled():
                 return "disabled"
         except Exception:
             pass
@@ -246,18 +341,31 @@ class FollowCuratorAction:
         except Exception:
             pass
 
+        already_done_tokens = (
+            "deixar de seguir",
+            "parar de seguir",
+            "unfollow",
+            "seguindo",
+            "following",
+            "leave group",
+            "sair do grupo",
+            "you're in",
+            "você faz parte",
+        )
         if (
             "following" in classes
             or "followed" in classes
             or "unfollow" in classes
-            or any(h in text for h in ("deixar de seguir", "parar de seguir", "unfollow", "seguindo"))
+            or any(h in text for h in already_done_tokens)
         ):
-            # "Seguindo" / following state
-            if "seguir" in text and "deixar" not in text and "parar" not in text:
-                # texto curto "Seguir"
-                pass
-            else:
-                return "following"
+            if text in ("seguir", "follow"):
+                return "follow"
+            if (
+                any(h in text for h in FOLLOW_HINTS)
+                and not any(h in text for h in ("deixar", "parar", "unfollow", "leave", "sair"))
+            ):
+                return "follow"
+            return "following"
 
         aria = ""
         try:
@@ -267,10 +375,9 @@ class FollowCuratorAction:
         if aria == "true":
             return "following"
 
-        if any(h in text for h in FOLLOW_HINTS) or "follow_btn" in classes:
+        if any(h in text for h in FOLLOW_HINTS) or "follow_btn" in classes or "btn_green" in classes:
             return "follow"
 
-        # Steam às vezes usa botão sem texto claro — assume follow se chegou aqui
         return "follow"
 
     async def _confirm_following(self, page: Page, button: Locator) -> bool:
@@ -280,23 +387,13 @@ class FollowCuratorAction:
         except Exception:
             pass
 
-        # Reavalia o mesmo botão
         try:
-            state = await self._button_state(button)
-            if state == "following":
+            if await self._button_state(button) == "following":
                 return True
         except Exception:
             pass
 
-        # Procura indicadores de "seguindo"
-        confirm_selectors = [
-            "text=Seguindo",
-            "text=Following",
-            "text=Deixar de seguir",
-            "#header_curator_details .follow_btn.following",
-            "#header_curator_details .follow_controls .following",
-        ]
-        for selector in confirm_selectors:
+        for selector in self.config.confirm_selectors:
             try:
                 loc = page.locator(selector).first
                 if await loc.count() > 0 and await loc.is_visible(
@@ -308,6 +405,12 @@ class FollowCuratorAction:
         return False
 
 
+# Compatibilidade com imports existentes
+class FollowCuratorAction(FollowSteamEntityAction):
+    def __init__(self, browser: BrowserManager) -> None:
+        super().__init__(browser, ACTION_CONFIGS["follow_curator"])
+
+
 async def run_action(
     action_type: str,
     url: str,
@@ -315,9 +418,10 @@ async def run_action(
     *,
     step_callback=None,
 ) -> ActionResult:
-    if action_type == "follow_curator":
-        return await FollowCuratorAction(browser).run(url, step_callback=step_callback)
-    raise ActionError(
-        ActionErrorCode.UNEXPECTED,
-        f"Tipo de ação não suportado: {action_type}",
-    )
+    config = ACTION_CONFIGS.get(action_type)
+    if config is None:
+        raise ActionError(
+            ActionErrorCode.UNEXPECTED,
+            f"Tipo de ação não suportado: {action_type}",
+        )
+    return await FollowSteamEntityAction(browser, config).run(url, step_callback=step_callback)
