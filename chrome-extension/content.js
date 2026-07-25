@@ -3,18 +3,61 @@
   const LABEL_DEFAULT = "Copy URLs";
   const LABEL_COPIED = "copiado";
 
+  function decodeActionPayload(encoded) {
+    try {
+      const json = atob(encoded);
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveFinalUrl(payload) {
+    if (!payload?.task) return null;
+
+    const task = String(payload.task);
+    const data = payload.data;
+
+    // Wishlist / userdata checks use an internal endpoint + app id
+    if (task.includes("/steam/userdata") && data != null && data !== "") {
+      const appId = Array.isArray(data) ? data[0] : data;
+      if (appId) {
+        return `https://store.steampowered.com/app/${appId}`;
+      }
+    }
+
+    try {
+      return new URL(task).href;
+    } catch {
+      return null;
+    }
+  }
+
   function collectActionUrls() {
-    const links = document.querySelectorAll("#actions tr:not(.hidden) a[href]");
+    const rows = document.querySelectorAll("#actions tr:not(.hidden)");
     const urls = [];
 
-    for (const link of links) {
-      try {
-        const absolute = new URL(link.getAttribute("href"), location.origin).href;
-        if (!urls.includes(absolute)) {
-          urls.push(absolute);
+    for (const row of rows) {
+      const button = row.querySelector("button[data-action]");
+      if (!button) continue;
+
+      const payload = decodeActionPayload(button.getAttribute("data-action"));
+      const finalUrl = resolveFinalUrl(payload);
+      if (finalUrl && !urls.includes(finalUrl)) {
+        urls.push(finalUrl);
+      }
+    }
+
+    // Fallback: redirect hrefs if payload decode fails
+    if (!urls.length) {
+      const links = document.querySelectorAll("#actions tr:not(.hidden) a[href]");
+      for (const link of links) {
+        try {
+          const absolute = new URL(link.getAttribute("href"), location.origin).href;
+          if (!urls.includes(absolute)) urls.push(absolute);
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore invalid hrefs
       }
     }
 
