@@ -66,6 +66,12 @@ class TestDetectActionType:
     def test_group(self):
         assert detect_action_type("https://steamcommunity.com/groups/63eReg") == "follow_group"
 
+    def test_app(self):
+        assert (
+            detect_action_type("https://store.steampowered.com/app/3034600/Sandy_Planet__Season_1/")
+            == "wishlist_and_follow_app"
+        )
+
     def test_unknown(self):
         with pytest.raises(InvalidSteamUrlError):
             detect_action_type("https://store.steampowered.com/")
@@ -85,13 +91,17 @@ class TestTaskCreateValidation:
         payload = TaskCreate(
             urls=(
                 "https://store.steampowered.com/publisher/asd/\n"
-                "https://steamcommunity.com/groups/63eReg"
+                "https://steamcommunity.com/groups/63eReg\n"
+                "https://store.steampowered.com/app/3034600/Sandy_Planet__Season_1/\n"
+                "https://store.steampowered.com/curator/23741321/"
             ),
             action_type="auto",
         )
         items = payload.resolved_items()
         assert items[0][1] == "follow_publisher"
         assert items[1][1] == "follow_group"
+        assert items[2][1] == "wishlist_and_follow_app"
+        assert items[3][1] == "follow_curator"
 
     def test_rejects_invalid_line(self):
         with pytest.raises(ValidationError):

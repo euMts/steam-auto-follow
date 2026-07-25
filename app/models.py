@@ -34,6 +34,7 @@ class ActionType(str, enum.Enum):
     FOLLOW_CURATOR = "follow_curator"
     FOLLOW_PUBLISHER = "follow_publisher"
     FOLLOW_GROUP = "follow_group"
+    WISHLIST_AND_FOLLOW_APP = "wishlist_and_follow_app"
 
 
 class AuthStatus(str, enum.Enum):

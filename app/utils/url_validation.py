@@ -54,6 +54,8 @@ def detect_action_type(url: str) -> str:
     path = (parsed.path or "").lower()
     host = (parsed.hostname or "").lower()
 
+    if "/app/" in path:
+        return "wishlist_and_follow_app"
     if "/curator/" in path:
         return "follow_curator"
     if "/publisher/" in path or "/developer/" in path:
@@ -63,8 +65,7 @@ def detect_action_type(url: str) -> str:
 
     raise InvalidSteamUrlError(
         "Não foi possível detectar a ação pela URL. "
-        "Use /curator/, /publisher/, /developer/ ou /groups/, "
-        "ou escolha o tipo de ação manualmente."
+        "Use /app/, /curator/, /publisher/, /developer/ ou /groups/."
     )
 
 

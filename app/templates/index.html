@@ -113,19 +113,16 @@
       </div>
       <form id="task-form" class="form-grid">
         <label class="full">
-          URLs (uma por linha)
-          <textarea name="urls" rows="5" placeholder="https://store.steampowered.com/curator/43562394/&#10;https://store.steampowered.com/publisher/asd/&#10;https://steamcommunity.com/groups/63eReg" required></textarea>
+          URLs (uma por linha) — a ação é detectada automaticamente
+          <textarea name="urls" rows="6" placeholder="https://store.steampowered.com/curator/23741321/&#10;https://store.steampowered.com/publisher/asd/&#10;https://store.steampowered.com/app/3034600/Sandy_Planet__Season_1/&#10;https://steamcommunity.com/groups/63eReg" required></textarea>
         </label>
-        <label>
-          Tipo de ação
-          <select name="action_type">
-            <option value="auto">Detectar pela URL</option>
-            <option value="follow_curator">Seguir curador da Steam</option>
-            <option value="follow_publisher">Seguir publisher da Steam</option>
-            <option value="follow_group">Entrar no grupo da Community</option>
-          </select>
-        </label>
-        <p class="muted full">Os cookies <code>steamLoginSecure</code> e <code>sessionid</code> valem para Store e Community.</p>
+        <input type="hidden" name="action_type" value="auto" />
+        <p class="muted full">
+          Detecção automática:
+          <code>/curator/</code> e <code>/publisher/</code> → seguir ·
+          <code>/app/</code> → wishlist + seguir ·
+          <code>/groups/</code> → entrar no grupo
+        </p>
         <div class="actions">
           <button type="submit">Salvar e processar</button>
         </div>

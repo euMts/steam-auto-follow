@@ -23,7 +23,8 @@
     follow_curator: "Seguir curador",
     follow_publisher: "Seguir publisher",
     follow_group: "Entrar no grupo",
-    auto: "Detectar pela URL",
+    wishlist_and_follow_app: "Wishlist + seguir app",
+    auto: "Automático",
   };
 
   const STATUS_CLASS = {
@@ -363,12 +364,14 @@
   $("#task-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.target;
-    const payload = {
-      urls: form.urls.value,
-      action_type: form.action_type.value,
-    };
     await runAction(async () => {
-      await api("/api/tasks", { method: "POST", body: JSON.stringify(payload) });
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          urls: form.urls.value,
+          action_type: "auto",
+        }),
+      });
       form.urls.value = "";
     }, "Tarefas salvas — processamento iniciado");
   });

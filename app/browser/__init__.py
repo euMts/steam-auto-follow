@@ -1,8 +1,9 @@
 from app.browser.actions import (
     ActionError,
     ActionErrorCode,
+    CuratorStyleFollowAction,
     FollowCuratorAction,
-    FollowSteamEntityAction,
+    WishlistAndFollowAppAction,
     run_action,
 )
 from app.browser.manager import BrowserNotRunningError, BrowserManager, browser_manager
@@ -13,9 +14,10 @@ __all__ = [
     "ActionErrorCode",
     "BrowserManager",
     "BrowserNotRunningError",
+    "CuratorStyleFollowAction",
     "FollowCuratorAction",
-    "FollowSteamEntityAction",
     "SteamSessionService",
+    "WishlistAndFollowAppAction",
     "browser_manager",
     "run_action",
     "steam_session",
