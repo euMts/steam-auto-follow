@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
@@ -8,17 +8,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.browser.manager import BrowserManager, BrowserNotRunningError, browser_manager
-from app.config import STEAM_COOKIE_BOOTSTRAP_URLS, STEAM_COOKIE_DOMAINS, get_settings
+from app.config import (
+    COMMUNITY_BOOTSTRAP_URL,
+    COMMUNITY_COOKIE_DOMAINS,
+    STORE_BOOTSTRAP_URL,
+    STORE_COOKIE_DOMAINS,
+    get_settings,
+)
 from app.models import AuthStatus, EncryptedCookie
 from app.utils.crypto import CookieCryptoError, decrypt_value, encrypt_value
 from app.utils.url_validation import mask_secret
 
 
-COOKIE_NAMES = ("steamLoginSecure", "sessionid")
-
-
 @dataclass
-class CookieValues:
+class DomainCookieValues:
     steam_login_secure: str | None = None
     sessionid: str | None = None
 
@@ -28,10 +31,24 @@ class CookieValues:
 
 
 @dataclass
+class CookieValues:
+    store: DomainCookieValues = field(default_factory=DomainCookieValues)
+    community: DomainCookieValues = field(default_factory=DomainCookieValues)
+
+    @property
+    def configured(self) -> bool:
+        return self.store.configured and self.community.configured
+
+
+@dataclass
 class AuthCheckResult:
     status: AuthStatus
     account_name: str | None = None
     detail: str | None = None
+
+
+def _cookie_key(site: str, name: str) -> str:
+    return f"{site}.{name}"
 
 
 class SteamSessionService:
@@ -57,33 +74,103 @@ class SteamSessionService:
         result = await session.execute(select(EncryptedCookie))
         rows = {row.name: row for row in result.scalars().all()}
         values = CookieValues()
+
         try:
-            if "steamLoginSecure" in rows:
-                values.steam_login_secure = decrypt_value(rows["steamLoginSecure"].value_encrypted)
-            if "sessionid" in rows:
-                values.sessionid = decrypt_value(rows["sessionid"].value_encrypted)
+            values.store.steam_login_secure = self._read_cookie(
+                rows, "store", "steamLoginSecure", legacy_names=("steamLoginSecure",)
+            )
+            values.store.sessionid = self._read_cookie(
+                rows, "store", "sessionid", legacy_names=("sessionid",)
+            )
+            values.community.steam_login_secure = self._read_cookie(
+                rows, "community", "steamLoginSecure"
+            )
+            values.community.sessionid = self._read_cookie(
+                rows, "community", "sessionid"
+            )
         except CookieCryptoError:
             return CookieValues()
         return values
 
+    def _read_cookie(
+        self,
+        rows: dict,
+        site: str,
+        name: str,
+        *,
+        legacy_names: tuple[str, ...] = (),
+    ) -> str | None:
+        key = _cookie_key(site, name)
+        if key in rows:
+            return decrypt_value(rows[key].value_encrypted)
+        for legacy in legacy_names:
+            if legacy in rows:
+                return decrypt_value(rows[legacy].value_encrypted)
+        return None
+
     async def cookie_status(self, session: AsyncSession) -> dict:
         values = await self.get_cookies(session)
+
+        def site_status(domain: DomainCookieValues) -> dict:
+            return {
+                "steam_login_secure": (
+                    "Configurado" if domain.steam_login_secure else "Não configurado"
+                ),
+                "sessionid": "Configurado" if domain.sessionid else "Não configurado",
+                "steam_login_secure_masked": mask_secret(domain.steam_login_secure),
+                "sessionid_masked": mask_secret(domain.sessionid),
+                "configured": domain.configured,
+            }
+
+        store = site_status(values.store)
+        community = site_status(values.community)
         return {
-            "steam_login_secure": "Configurado" if values.steam_login_secure else "Não configurado",
-            "sessionid": "Configurado" if values.sessionid else "Não configurado",
-            "steam_login_secure_masked": mask_secret(values.steam_login_secure),
-            "sessionid_masked": mask_secret(values.sessionid),
+            "store": store,
+            "community": community,
             "configured": values.configured,
+            # Compat com UI antiga
+            "steam_login_secure": (
+                "Configurado" if values.configured else "Não configurado"
+            ),
+            "sessionid": "Configurado" if values.configured else "Não configurado",
+            "steam_login_secure_masked": values.store.steam_login_secure
+            and mask_secret(values.store.steam_login_secure),
+            "sessionid_masked": values.store.sessionid and mask_secret(values.store.sessionid),
         }
 
     async def save_cookies(
         self,
         session: AsyncSession,
-        steam_login_secure: str,
-        sessionid: str,
+        *,
+        store_steam_login_secure: str,
+        store_sessionid: str,
+        community_steam_login_secure: str,
+        community_sessionid: str,
     ) -> None:
-        await self._upsert_cookie(session, "steamLoginSecure", steam_login_secure)
-        await self._upsert_cookie(session, "sessionid", sessionid)
+        await self._upsert_cookie(
+            session, _cookie_key("store", "steamLoginSecure"), store_steam_login_secure
+        )
+        await self._upsert_cookie(
+            session, _cookie_key("store", "sessionid"), store_sessionid
+        )
+        await self._upsert_cookie(
+            session,
+            _cookie_key("community", "steamLoginSecure"),
+            community_steam_login_secure,
+        )
+        await self._upsert_cookie(
+            session, _cookie_key("community", "sessionid"), community_sessionid
+        )
+
+        # Remove chaves legadas de par único, se existirem
+        for legacy in ("steamLoginSecure", "sessionid"):
+            result = await session.execute(
+                select(EncryptedCookie).where(EncryptedCookie.name == legacy)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                await session.delete(row)
+
         await session.commit()
         self._auth_status = AuthStatus.NOT_VERIFIED
         self._account_name = None
@@ -113,20 +200,50 @@ class SteamSessionService:
         cookies = await self.get_cookies(session)
         if not cookies.configured:
             self._auth_status = AuthStatus.COOKIES_MISSING
-            raise CookieCryptoError("Cookies da Steam não estão configurados")
+            raise CookieCryptoError(
+                "Cookies da Store e da Community precisam estar configurados"
+            )
 
         await self.browser.ensure_open()
+        assert cookies.store.steam_login_secure and cookies.store.sessionid
+        assert cookies.community.steam_login_secure and cookies.community.sessionid
 
-        # Abre a Store primeiro (origem válida) antes de injetar cookies.
-        await self.browser.goto(STEAM_COOKIE_BOOTSTRAP_URLS[0])
+        # Store
+        await self.browser.goto(STORE_BOOTSTRAP_URL)
+        await self.browser.context.add_cookies(
+            self._build_cookie_payload(
+                cookies.store.steam_login_secure,
+                cookies.store.sessionid,
+                STORE_COOKIE_DOMAINS,
+            )
+        )
+        await self.browser.reload()
 
-        payload = []
-        assert cookies.steam_login_secure and cookies.sessionid
-        for domain in STEAM_COOKIE_DOMAINS:
+        # Community (valores distintos)
+        await self.browser.goto(COMMUNITY_BOOTSTRAP_URL)
+        await self.browser.context.add_cookies(
+            self._build_cookie_payload(
+                cookies.community.steam_login_secure,
+                cookies.community.sessionid,
+                COMMUNITY_COOKIE_DOMAINS,
+            )
+        )
+        await self.browser.reload()
+
+        self.browser.state.last_action = "Cookies aplicados (Store + Community separados)"
+
+    def _build_cookie_payload(
+        self,
+        steam_login_secure: str,
+        sessionid: str,
+        domains: tuple[str, ...],
+    ) -> list[dict]:
+        payload: list[dict] = []
+        for domain in domains:
             payload.append(
                 {
                     "name": "steamLoginSecure",
-                    "value": cookies.steam_login_secure,
+                    "value": steam_login_secure,
                     "domain": domain,
                     "path": "/",
                     "secure": True,
@@ -136,21 +253,13 @@ class SteamSessionService:
             payload.append(
                 {
                     "name": "sessionid",
-                    "value": cookies.sessionid,
+                    "value": sessionid,
                     "domain": domain,
                     "path": "/",
                     "secure": True,
                 }
             )
-
-        await self.browser.context.add_cookies(payload)
-
-        # Garante sessão nos dois sites: Store e Community (mesmos nomes de cookie).
-        for url in STEAM_COOKIE_BOOTSTRAP_URLS:
-            await self.browser.goto(url)
-            await self.browser.reload()
-
-        self.browser.state.last_action = "Cookies aplicados (Store + Community)"
+        return payload
 
     async def verify_session(
         self,
@@ -160,9 +269,14 @@ class SteamSessionService:
     ) -> AuthCheckResult:
         cookies = await self.get_cookies(session)
         if not cookies.configured:
+            missing = []
+            if not cookies.store.configured:
+                missing.append("Store")
+            if not cookies.community.configured:
+                missing.append("Community")
             result = AuthCheckResult(
                 status=AuthStatus.COOKIES_MISSING,
-                detail="Cookies não configurados",
+                detail=f"Cookies não configurados: {', '.join(missing)}",
             )
             self._set_auth(result)
             return result
@@ -173,6 +287,9 @@ class SteamSessionService:
                 await self.apply_cookies(session)
             elif not self.browser.is_open:
                 await self.apply_cookies(session)
+
+            # Verifica na Store (origem principal das tarefas)
+            await self.browser.goto(STORE_BOOTSTRAP_URL)
             page = self.browser.page
             result = await self._inspect_auth(page)
             self._set_auth(result)
@@ -202,14 +319,12 @@ class SteamSessionService:
         settings = get_settings()
         timeout = min(settings.element_timeout_ms, 12000)
 
-        # Página de login explícita
         if "login" in page.url.lower() and "steampowered.com" in page.url.lower():
             return AuthCheckResult(
                 status=AuthStatus.NOT_AUTHENTICATED,
                 detail="Redirecionado para página de login",
             )
 
-        # Indicadores positivos de sessão autenticada
         account_selectors = [
             "#account_pulldown",
             ".playerAvatar",
@@ -230,7 +345,6 @@ class SteamSessionService:
             except Exception:
                 continue
 
-        # Logout link
         try:
             logout = page.get_by_role("link", name="Sair")
             if await logout.count() > 0:
@@ -243,7 +357,6 @@ class SteamSessionService:
         except Exception:
             pass
 
-        # Botão/link de login visível sugere não autenticado
         login_selectors = [
             'a[href*="login"]',
             "#global_action_menu a.global_action_link",
@@ -263,19 +376,6 @@ class SteamSessionService:
                         )
             except Exception:
                 continue
-
-        # Fallback: cookies presentes no contexto
-        try:
-            ctx_cookies = await page.context.cookies()
-            names = {c["name"] for c in ctx_cookies if "steam" in c.get("domain", "")}
-            if "steamLoginSecure" in names and "sessionid" in names:
-                # Cookies presentes mas UI ambígua
-                return AuthCheckResult(
-                    status=AuthStatus.NOT_AUTHENTICATED,
-                    detail="Cookies presentes, mas interface não confirma login",
-                )
-        except Exception:
-            pass
 
         return AuthCheckResult(
             status=AuthStatus.ERROR,
@@ -299,7 +399,7 @@ class SteamSessionService:
                     return text.split("\n")[0].strip()
             except Exception:
                 continue
-                return None
+        return None
 
 
 steam_session = SteamSessionService(browser_manager)

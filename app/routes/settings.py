@@ -64,18 +64,23 @@ async def save_cookies(
     try:
         await steam_session.save_cookies(
             session,
-            payload.steam_login_secure,
-            payload.sessionid,
+            store_steam_login_secure=payload.store.steam_login_secure,
+            store_sessionid=payload.store.sessionid,
+            community_steam_login_secure=payload.community.steam_login_secure,
+            community_sessionid=payload.community.sessionid,
         )
     except CookieCryptoError as exc:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    await append_log("INFO", "session", "Cookies da Steam salvos (valores ocultos)")
+    await append_log(
+        "INFO",
+        "session",
+        "Cookies Store e Community salvos (valores ocultos, pares distintos)",
+    )
     status = CookieStatus(**(await steam_session.cookie_status(session)))
 
-    # Reaplica e verifica automaticamente
     try:
         auth = await steam_session.verify_session(session)
         await append_log(

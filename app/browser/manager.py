@@ -91,12 +91,14 @@ class BrowserManager:
             self._context.set_default_timeout(settings.element_timeout_ms)
             self._page = await self._context.new_page()
             self._page.on("close", self._on_page_close)
+            self._page.on("framenavigated", self._on_frame_navigated)
             self._browser.on("disconnected", self._on_browser_disconnected)
 
             self.state.is_open = True
             self.state.closed_manually = False
             self.state.last_action = "Navegador iniciado"
             await self._sync_url()
+            await self._notify_status()
 
     async def restart(self) -> None:
         await self.close()
@@ -145,6 +147,7 @@ class BrowserManager:
         self.state.current_url = None
         self.state.last_action = "Navegador fechado"
         self._closing = False
+        await self._notify_status()
 
     def _on_page_close(self, _page: Page) -> None:
         if self._closing:
@@ -154,6 +157,7 @@ class BrowserManager:
         self.state.last_closed_at = datetime.now(timezone.utc)
         self.state.last_action = "Navegador fechado manualmente"
         self.state.current_url = None
+        self._schedule_notify()
 
     def _on_browser_disconnected(self) -> None:
         if self._closing:
@@ -166,6 +170,32 @@ class BrowserManager:
         self._page = None
         self._context = None
         self._browser = None
+        self._schedule_notify()
+
+    def _on_frame_navigated(self, frame) -> None:
+        if self._closing or not self._page or frame != self._page.main_frame:
+            return
+        self.state.current_url = frame.url
+        self.state.last_navigation = datetime.now(timezone.utc).isoformat()
+        self.state.last_action = f"Navegou para {frame.url}"
+        self._schedule_notify()
+
+    def _schedule_notify(self) -> None:
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._notify_status())
+        except RuntimeError:
+            pass
+
+    async def _notify_status(self) -> None:
+        try:
+            from app.services.websocket_manager import ws_manager
+
+            await ws_manager.broadcast("browser_status", self.get_status_dict())
+        except Exception:
+            pass
 
     async def ensure_open(self) -> Page:
         if not self.is_open:
@@ -180,6 +210,7 @@ class BrowserManager:
             self.state.last_navigation = datetime.now(timezone.utc).isoformat()
             self.state.last_action = f"Navegou para {url}"
             await self._sync_url()
+            await self._notify_status()
 
     async def reload(self) -> None:
         page = self.page
@@ -189,6 +220,7 @@ class BrowserManager:
             self.state.last_navigation = datetime.now(timezone.utc).isoformat()
             self.state.last_action = "Página recarregada"
             await self._sync_url()
+            await self._notify_status()
 
     async def _sync_url(self) -> None:
         if self._page and not self._page.is_closed():

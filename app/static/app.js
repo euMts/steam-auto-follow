@@ -98,7 +98,8 @@
     ws.onopen = () => {
       setWsStatus(true, "WebSocket: conectado");
       state.reconnectDelay = 1000;
-      stopPolling();
+      // Mantém polling a cada 1s mesmo com WS (URL/estado do browser mudam sem evento).
+      startPolling();
       refreshAll();
     };
 
@@ -125,6 +126,7 @@
 
   function startPolling() {
     if (state.pollTimer) return;
+    // Atualiza o dashboard a cada 1s (não a cada 3s).
     state.pollTimer = setInterval(refreshAll, 1000);
   }
 
@@ -186,9 +188,13 @@
     }`;
 
     const cookies = auth.cookies || {};
-    $("#cookie-status").textContent = cookies.configured
-      ? `Configurado (${cookies.steam_login_secure_masked || "•••"} / ${cookies.sessionid_masked || "•••"})`
-      : "Não configurado";
+    const fmtCookie = (site) => {
+      if (!site) return "Não configurado";
+      if (!site.configured) return "Não configurado";
+      return `OK (${site.steam_login_secure_masked || "•••"} / ${site.sessionid_masked || "•••"})`;
+    };
+    $("#cookie-status-store").textContent = fmtCookie(cookies.store);
+    $("#cookie-status-community").textContent = fmtCookie(cookies.community);
     $("#account-name").textContent = auth.account_name || "—";
     $("#auth-checked").textContent = fmtTime(auth.checked_at);
 
@@ -352,13 +358,19 @@
     event.preventDefault();
     const form = event.target;
     const payload = {
-      steamLoginSecure: form.steamLoginSecure.value,
-      sessionid: form.sessionid.value,
+      store: {
+        steamLoginSecure: form.storeSteamLoginSecure.value,
+        sessionid: form.storeSessionid.value,
+      },
+      community: {
+        steamLoginSecure: form.communitySteamLoginSecure.value,
+        sessionid: form.communitySessionid.value,
+      },
     };
     await runAction(async () => {
       await api("/api/session/cookies", { method: "POST", body: JSON.stringify(payload) });
       form.reset();
-    }, "Cookies salvos e sessão verificada");
+    }, "Cookies Store e Community salvos");
   });
 
   $("#task-form").addEventListener("submit", async (event) => {

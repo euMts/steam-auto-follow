@@ -206,6 +206,12 @@ button.tiny { padding: 0.3rem 0.55rem; font-size: 0.75rem; }
   color: var(--warn);
   font-size: 0.9rem;
 }
+.section-title {
+  margin: 0.25rem 0 0;
+  font-size: 0.92rem;
+  color: var(--accent);
+  font-weight: 600;
+}
 .hidden { display: none !important; }
 .muted { color: var(--muted); font-size: 0.85rem; }
 

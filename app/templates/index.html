@@ -49,15 +49,25 @@
         <span id="auth-badge" class="badge badge-muted">Não verificado</span>
       </div>
       <form id="cookie-form" class="form-grid" autocomplete="off">
+        <h3 class="full section-title">Store (store.steampowered.com)</h3>
         <label>
-          steamLoginSecure
-          <input type="password" name="steamLoginSecure" placeholder="Cole o cookie aqui" required />
+          steamLoginSecure (Store)
+          <input type="password" name="storeSteamLoginSecure" placeholder="Cookie da Store" required />
         </label>
         <label>
-          sessionid
-          <input type="password" name="sessionid" placeholder="Cole o cookie aqui" required />
+          sessionid (Store)
+          <input type="password" name="storeSessionid" placeholder="Cookie da Store" required />
         </label>
-        <p class="muted full">Mesmos nomes nos domínios Store e Community — um único par cobre os dois.</p>
+        <h3 class="full section-title">Community (steamcommunity.com)</h3>
+        <label>
+          steamLoginSecure (Community)
+          <input type="password" name="communitySteamLoginSecure" placeholder="Cookie da Community" required />
+        </label>
+        <label>
+          sessionid (Community)
+          <input type="password" name="communitySessionid" placeholder="Cookie da Community" required />
+        </label>
+        <p class="muted full">Os valores são diferentes entre Store e Community — salve os dois pares.</p>
         <div class="actions">
           <button type="submit">Salvar cookies</button>
           <button type="button" class="secondary" data-action="session-verify">Verificar sessão</button>
@@ -66,7 +76,8 @@
         </div>
       </form>
       <dl class="meta-grid">
-        <div><dt>Cookies</dt><dd id="cookie-status">Não configurado</dd></div>
+        <div><dt>Store</dt><dd id="cookie-status-store">Não configurado</dd></div>
+        <div><dt>Community</dt><dd id="cookie-status-community">Não configurado</dd></div>
         <div><dt>Conta</dt><dd id="account-name">—</dd></div>
         <div><dt>Última verificação</dt><dd id="auth-checked">—</dd></div>
       </dl>

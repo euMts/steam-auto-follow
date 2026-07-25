@@ -9,7 +9,7 @@ from app.models import ActionType, AuthStatus, TaskStatus
 from app.utils.url_validation import detect_action_type, validate_steam_url
 
 
-class CookieInput(BaseModel):
+class DomainCookieInput(BaseModel):
     steam_login_secure: str = Field(..., min_length=1, alias="steamLoginSecure")
     sessionid: str = Field(..., min_length=1)
 
@@ -24,12 +24,28 @@ class CookieInput(BaseModel):
         return cleaned
 
 
-class CookieStatus(BaseModel):
+class CookieInput(BaseModel):
+    store: DomainCookieInput
+    community: DomainCookieInput
+
+
+class DomainCookieStatus(BaseModel):
     steam_login_secure: Literal["Configurado", "Não configurado"]
     sessionid: Literal["Configurado", "Não configurado"]
     steam_login_secure_masked: str | None = None
     sessionid_masked: str | None = None
     configured: bool
+
+
+class CookieStatus(BaseModel):
+    store: DomainCookieStatus
+    community: DomainCookieStatus
+    configured: bool
+    # Campos legados (resumo)
+    steam_login_secure: Literal["Configurado", "Não configurado"] | None = None
+    sessionid: Literal["Configurado", "Não configurado"] | None = None
+    steam_login_secure_masked: str | None = None
+    sessionid_masked: str | None = None
 
 
 class SettingsUpdate(BaseModel):
