@@ -1,8 +1,12 @@
-#saf-copy-actions {
+#saf-copy-actions,
+#saf-verify-actions {
   margin-left: 8px;
+  color: #fff;
+}
+
+#saf-copy-actions {
   background-color: #e83e8c;
   border-color: #e83e8c;
-  color: #fff;
 }
 
 #saf-copy-actions:hover,
@@ -15,5 +19,28 @@
 #saf-copy-actions:active {
   background-color: #c2256c;
   border-color: #c2256c;
+  color: #fff;
+}
+
+#saf-verify-actions {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+#saf-verify-actions:hover,
+#saf-verify-actions:focus {
+  background-color: #0b5ed7;
+  border-color: #0b5ed7;
+  color: #fff;
+}
+
+#saf-verify-actions:active {
+  background-color: #0a58ca;
+  border-color: #0a58ca;
+  color: #fff;
+}
+
+#saf-verify-actions:disabled {
+  opacity: 0.7;
   color: #fff;
 }

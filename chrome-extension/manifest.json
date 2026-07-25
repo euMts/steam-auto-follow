@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Giveaway.su Copy Actions",
-  "version": "1.1.0",
-  "description": "Copia as URLs das tasks de giveaway.su com um botão ao lado de Grab key.",
+  "version": "1.2.0",
+  "description": "Copia URLs e verifica todas as tasks do giveaway.su.",
   "permissions": ["clipboardWrite"],
   "content_scripts": [
     {

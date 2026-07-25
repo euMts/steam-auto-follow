@@ -1,7 +1,11 @@
 (function () {
-  const BUTTON_ID = "saf-copy-actions";
-  const LABEL_DEFAULT = "Copy URLs";
-  const LABEL_COPIED = "copiado";
+  const COPY_BUTTON_ID = "saf-copy-actions";
+  const VERIFY_BUTTON_ID = "saf-verify-actions";
+  const COPY_LABEL = "Copy URLs";
+  const COPY_LABEL_DONE = "copiado";
+  const VERIFY_LABEL = "Verify all";
+  const VERIFY_LABEL_DONE = "ok";
+  const VERIFY_DELAY_MS = 150;
 
   function decodeActionPayload(encoded) {
     try {
@@ -64,6 +68,25 @@
     return urls;
   }
 
+  function collectVerifyButtons() {
+    return Array.from(
+      document.querySelectorAll("#actions tr:not(.hidden) button[data-action]:not(:disabled)")
+    );
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function clickAllVerifyButtons() {
+    const buttons = collectVerifyButtons();
+    for (const button of buttons) {
+      button.click();
+      await sleep(VERIFY_DELAY_MS);
+    }
+    return buttons.length;
+  }
+
   async function copyText(text) {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -81,51 +104,87 @@
     textarea.remove();
   }
 
-  function insertButton() {
-    if (document.getElementById(BUTTON_ID)) return;
+  function flashLabel(button, doneLabel, defaultLabel) {
+    button.textContent = doneLabel;
+    const previous = button.dataset.resetTimer;
+    if (previous) clearTimeout(Number(previous));
+    const timer = setTimeout(() => {
+      button.textContent = defaultLabel;
+      delete button.dataset.resetTimer;
+    }, 3000);
+    button.dataset.resetTimer = String(timer);
+  }
 
+  function insertButtons() {
     const getKey = document.getElementById("getKey");
     if (!getKey) return;
 
     const grabKey = getKey.querySelector("a.btn, button.btn");
     if (!grabKey) return;
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.id = BUTTON_ID;
-    button.className = "btn btn-sm";
-    button.textContent = LABEL_DEFAULT;
+    let copyButton = document.getElementById(COPY_BUTTON_ID);
+    if (!copyButton) {
+      copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.id = COPY_BUTTON_ID;
+      copyButton.className = "btn btn-sm";
+      copyButton.textContent = COPY_LABEL;
 
-    let resetTimer = null;
+      copyButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
 
-    button.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+        const urls = collectActionUrls();
+        if (!urls.length) return;
 
-      const urls = collectActionUrls();
-      if (!urls.length) return;
+        try {
+          await copyText(urls.join("\n"));
+          flashLabel(copyButton, COPY_LABEL_DONE, COPY_LABEL);
+        } catch (error) {
+          console.error("[Giveaway.su Copy Actions] Failed to copy:", error);
+        }
+      });
 
-      try {
-        await copyText(urls.join("\n"));
-        button.textContent = LABEL_COPIED;
-        if (resetTimer) clearTimeout(resetTimer);
-        resetTimer = setTimeout(() => {
-          button.textContent = LABEL_DEFAULT;
-          resetTimer = null;
-        }, 3000);
-      } catch (error) {
-        console.error("[Giveaway.su Copy Actions] Failed to copy:", error);
-      }
-    });
+      grabKey.insertAdjacentElement("afterend", copyButton);
+    }
 
-    grabKey.insertAdjacentElement("afterend", button);
+    if (!document.getElementById(VERIFY_BUTTON_ID)) {
+      const verifyButton = document.createElement("button");
+      verifyButton.type = "button";
+      verifyButton.id = VERIFY_BUTTON_ID;
+      verifyButton.className = "btn btn-sm";
+      verifyButton.textContent = VERIFY_LABEL;
+
+      verifyButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (verifyButton.dataset.running === "1") return;
+        verifyButton.dataset.running = "1";
+        verifyButton.disabled = true;
+
+        try {
+          const count = await clickAllVerifyButtons();
+          if (count > 0) {
+            flashLabel(verifyButton, VERIFY_LABEL_DONE, VERIFY_LABEL);
+          }
+        } catch (error) {
+          console.error("[Giveaway.su Copy Actions] Failed to verify:", error);
+        } finally {
+          verifyButton.disabled = false;
+          delete verifyButton.dataset.running;
+        }
+      });
+
+      copyButton.insertAdjacentElement("afterend", verifyButton);
+    }
   }
 
   function init() {
-    insertButton();
+    insertButtons();
 
     const observer = new MutationObserver(() => {
-      insertButton();
+      insertButtons();
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
