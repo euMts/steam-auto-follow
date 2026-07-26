@@ -90,17 +90,12 @@ class RateLimitGuard:
         if runtime.rate_limit_cooldown_until and runtime.rate_limit_cooldown_until > now:
             remaining = (runtime.rate_limit_cooldown_until - now).total_seconds()
             raise RuntimeError(
-                f"Cooldownoldown anti-rate-limit ativo: aguarde mais {remaining:.0f}s"
+                f"Cooldown anti-rate-limit ativo: aguarde mais {remaining:.0f}s"
             )
 
+        # Limpeza da janela de 1h (só para métrica no dashboard)
         cutoff = now - timedelta(hours=1)
-        recent = [t for t in self._actions_timestamps if t >= cutoff]
-        self._actions_timestamps = recent
-        limit = max(1, int(runtime.max_actions_per_hour))
-        if len(recent) >= limit:
-            raise RuntimeError(
-                f"Limite de {limit} ações/hora atingido — aguarde antes de continuar"
-            )
+        self._actions_timestamps = [t for t in self._actions_timestamps if t >= cutoff]
 
     def compute_wait_seconds(self, runtime: RuntimeState) -> float:
         base = max(1.0, float(runtime.min_task_interval_seconds))

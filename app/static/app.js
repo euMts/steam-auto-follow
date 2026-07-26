@@ -239,7 +239,6 @@
       form.action_settle_ms.value = settings.action_settle_ms ?? 2500;
       form.click_delay_ms_min.value = settings.click_delay_ms_min ?? 600;
       form.click_delay_ms_max.value = settings.click_delay_ms_max ?? 1800;
-      form.max_actions_per_hour.value = settings.max_actions_per_hour ?? 25;
       form.cooldown_after_rate_limit_seconds.value = settings.cooldown_after_rate_limit_seconds ?? 300;
       form.auth_recheck_every_n_tasks.value = settings.auth_recheck_every_n_tasks ?? 5;
       form.navigation_timeout_ms.value = settings.navigation_timeout_ms ?? 45000;
@@ -254,7 +253,7 @@
       ? ` · cooldown até ${fmtTime(settings.rate_limit_cooldown_until)}`
       : "";
     $("#pacing-status").textContent =
-      `Ações na última hora: ${settings.actions_last_hour ?? 0}/${settings.max_actions_per_hour ?? 25}` +
+      `Ações na última hora: ${settings.actions_last_hour ?? 0}` +
       ` · multiplicador adaptativo ×${Number(mult).toFixed(2)}${cooldown}`;
 
     renderTasks();
@@ -415,7 +414,6 @@
       action_settle_ms: Number(form.action_settle_ms.value),
       click_delay_ms_min: Number(form.click_delay_ms_min.value),
       click_delay_ms_max: Number(form.click_delay_ms_max.value),
-      max_actions_per_hour: Number(form.max_actions_per_hour.value),
       cooldown_after_rate_limit_seconds: Number(form.cooldown_after_rate_limit_seconds.value),
       auth_recheck_every_n_tasks: Number(form.auth_recheck_every_n_tasks.value),
       navigation_timeout_ms: Number(form.navigation_timeout_ms.value),

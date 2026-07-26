@@ -43,7 +43,6 @@ async def update_app_settings(
         "action_settle_ms",
         "click_delay_ms_min",
         "click_delay_ms_max",
-        "max_actions_per_hour",
         "cooldown_after_rate_limit_seconds",
         "auth_recheck_every_n_tasks",
     )

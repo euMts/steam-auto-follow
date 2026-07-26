@@ -49,4 +49,4 @@ Uso pessoal/local. Não contorna CAPTCHA, Steam Guard nem bloqueios da Steam.
 
 Se aparecer **Ops! / solicitações demais**, a fila pausa sozinha e entra em cooldown. Aguarde no Chromium e clique em **Retomar fila**.
 
-Prevenção incluída: intervalo + jitter, pausas humanas, limite/hora, backoff adaptativo, cookies/auth em cache.
+Prevenção incluída: intervalo + jitter, pausas humanas, backoff adaptativo, cookies/auth em cache.
