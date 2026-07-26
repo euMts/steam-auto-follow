@@ -92,6 +92,13 @@ GROUP_JOIN_FORM_SELECTORS = (
 
 GROUP_JOIN_TEXT_MARKERS = ("entrar", "join group", "unir-se", "unir se")
 GROUP_LEAVE_TEXT_MARKERS = ("sair do grupo", "leave group")
+ALREADY_GROUP_MEMBER_MARKERS = (
+    "já é um membro deste grupo",
+    "ja e um membro deste grupo",
+    "already a member of this group",
+    "you are already a member of this group",
+    "you are already a member",
+)
 
 WISHLIST_SELECTORS = (
     "#add_to_wishlist_area a.add_to_wishlist",
@@ -131,8 +138,7 @@ async def _step(callback, name: str) -> None:
         await callback(name)
 
 
-async def detect_blocking_conditions(page: Page) -> None:
-    """Detecta CAPTCHA, rate limit, login e outras páginas que exigem ação manual."""
+async def _page_haystack(page: Page) -> str:
     url = page.url.lower()
     content = ""
     visible_text = ""
@@ -144,12 +150,30 @@ async def detect_blocking_conditions(page: Page) -> None:
         visible_text = (await page.locator("body").inner_text(timeout=2000)).lower()
     except Exception:
         pass
-    haystack = f"{url}\n{content}\n{visible_text}"
+    return f"{url}\n{content}\n{visible_text}"
+
+
+def _haystack_indicates_already_group_member(haystack: str) -> bool:
+    return any(marker in haystack for marker in ALREADY_GROUP_MEMBER_MARKERS)
+
+
+async def detect_blocking_conditions(page: Page) -> None:
+    """Detecta CAPTCHA, rate limit, login e outras páginas que exigem ação manual."""
+    haystack = await _page_haystack(page)
+    url = page.url.lower()
 
     if "login" in url and ("steampowered" in url or "steamcommunity" in url):
         raise ActionError(
             ActionErrorCode.LOGIN_PAGE,
             "Página de login detectada — ação manual necessária",
+        )
+
+    # "Ops! já é membro" não é rate limit — sucesso idempotente
+    if _haystack_indicates_already_group_member(haystack):
+        raise ActionError(
+            ActionErrorCode.ALREADY_FOLLOWING,
+            "Já é membro do grupo",
+            retryable=False,
         )
 
     rate_limit_markers = (
@@ -354,7 +378,10 @@ class FollowGroupAction:
         self.browser = browser
 
     async def _is_member(self, page: Page) -> bool:
-        """Só considera membro se o CTA de sair estiver presente — não o form oculto."""
+        """Membro = CTA de sair, ou página Ops! dizendo que já é membro."""
+        if _haystack_indicates_already_group_member(await _page_haystack(page)):
+            return True
+
         # Prioridade: texto do botão em .grouppage_join_area (join vs leave)
         buttons = page.locator(
             ".grouppage_join_area a.btn_green_white_innerfade, "
@@ -363,18 +390,21 @@ class FollowGroupAction:
             ".grouppage_join_area a[href*='leave_group']"
         )
         count = await buttons.count()
+        saw_join = False
+        saw_leave = False
         for idx in range(count):
             try:
                 text = ((await buttons.nth(idx).inner_text()) or "").strip().lower()
             except Exception:
                 continue
             if any(marker in text for marker in GROUP_JOIN_TEXT_MARKERS):
-                return False
+                saw_join = True
             if any(marker in text for marker in GROUP_LEAVE_TEXT_MARKERS):
-                return True
+                saw_leave = True
 
-        # Form de entrar presente ⇒ ainda não é membro (Steam deixa leave_form no DOM às vezes)
-        if await page.locator(",".join(GROUP_JOIN_FORM_SELECTORS)).count() > 0:
+        if saw_leave and not saw_join:
+            return True
+        if saw_join:
             return False
 
         return await _any_visible(page, GROUP_MEMBER_SELECTORS, timeout=1200)
@@ -385,6 +415,17 @@ class FollowGroupAction:
             if await loc.count() > 0:
                 return loc
         return None
+
+    async def _confirm_membership(self, page: Page, url: str) -> bool:
+        if await self._is_member(page):
+            return True
+        # Volta à URL do grupo (após join a Steam pode cair em página de erro/redirect)
+        try:
+            await self.browser.goto(url)
+        except Exception:
+            await self.browser.reload()
+        await page.wait_for_timeout(800)
+        return await self._is_member(page)
 
     async def _click_join(self, page: Page) -> None:
         """Entra no grupo via form submit (mais confiável que javascript: href)."""
@@ -473,20 +514,28 @@ class FollowGroupAction:
 
         await _step(step_callback, "Clicando em entrar no grupo")
         await self._click_join(page)
-        await detect_blocking_conditions(page)
 
         await _step(step_callback, "Confirmando resultado")
         await page.wait_for_timeout(800)
-        if not await self._is_member(page):
-            # Reload e confere (Steam às vezes atrasa o UI)
-            await self.browser.reload()
+        try:
             await detect_blocking_conditions(page)
-            if not await self._is_member(page):
-                raise ActionError(
-                    ActionErrorCode.CONFIRMATION_MISSING,
-                    "Clique executado, mas confirmação visual não encontrada",
-                    retryable=True,
+        except ActionError as exc:
+            if exc.code == ActionErrorCode.ALREADY_FOLLOWING:
+                await _step(step_callback, "Finalizando")
+                return ActionResult(
+                    success=True,
+                    message="Já é membro do grupo",
+                    already_done=True,
+                    code=ActionErrorCode.ALREADY_FOLLOWING,
                 )
+            raise
+
+        if not await self._confirm_membership(page, url):
+            raise ActionError(
+                ActionErrorCode.CONFIRMATION_MISSING,
+                "Clique executado, mas confirmação visual não encontrada",
+                retryable=True,
+            )
 
         await _step(step_callback, "Finalizando")
         return ActionResult(success=True, message="Entrou no grupo com sucesso")

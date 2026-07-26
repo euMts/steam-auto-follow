@@ -212,6 +212,12 @@ class TaskWorker:
                 await queue_service.complete_task(session, task_id, result.message)
 
         except ActionError as exc:
+            if exc.code == ActionErrorCode.ALREADY_FOLLOWING:
+                rate_limit_guard.note_success()
+                await append_log("SUCCESS", "action", f"Tarefa #{task_id}: {exc.message}")
+                async with factory() as session:
+                    await queue_service.complete_task(session, task_id, exc.message)
+                return
             await self._handle_action_error(task_id, exc)
         except CookieCryptoError as exc:
             await self._handle_action_error(
