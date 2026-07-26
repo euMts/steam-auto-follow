@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Giveaway.su Copy Actions",
-  "version": "1.3.0",
-  "description": "Copia URLs, verifica tasks e marca giveaways já usados.",
+  "version": "1.4.0",
+  "description": "Copia URLs incompletas, verifica tasks e marca giveaways já usados.",
   "permissions": ["clipboardWrite"],
   "content_scripts": [
     {

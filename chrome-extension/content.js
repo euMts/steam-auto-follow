@@ -6,6 +6,9 @@
   const VERIFY_LABEL = "Verify all";
   const VERIFY_LABEL_DONE = "ok";
   const VERIFY_DELAY_MS = 150;
+  const SETTLE_POLL_MS = 300;
+  const SETTLE_STABLE_ROUNDS = 3;
+  const SETTLE_MAX_MS = 10000;
 
   function decodeActionPayload(encoded) {
     try {
@@ -37,13 +40,25 @@
     }
   }
 
-  function collectActionUrls() {
-    const rows = document.querySelectorAll("#actions tr:not(.hidden)");
+  function isActionComplete(button) {
+    return (
+      button.disabled ||
+      button.hasAttribute("data-result") ||
+      button.classList.contains("btn-success")
+    );
+  }
+
+  function getActionRows() {
+    return Array.from(document.querySelectorAll("#actions tr:not(.hidden)"));
+  }
+
+  function collectActionUrls({ incompleteOnly = false } = {}) {
     const urls = [];
 
-    for (const row of rows) {
+    for (const row of getActionRows()) {
       const button = row.querySelector("button[data-action]");
       if (!button) continue;
+      if (incompleteOnly && isActionComplete(button)) continue;
 
       const payload = decodeActionPayload(button.getAttribute("data-action"));
       const finalUrl = resolveFinalUrl(payload);
@@ -54,8 +69,12 @@
 
     // Fallback: redirect hrefs if payload decode fails
     if (!urls.length) {
-      const links = document.querySelectorAll("#actions tr:not(.hidden) a[href]");
-      for (const link of links) {
+      for (const row of getActionRows()) {
+        const button = row.querySelector("button[data-action]");
+        if (incompleteOnly && button && isActionComplete(button)) continue;
+
+        const link = row.querySelector("a[href]");
+        if (!link) continue;
         try {
           const absolute = new URL(link.getAttribute("href"), location.origin).href;
           if (!urls.includes(absolute)) urls.push(absolute);
@@ -71,7 +90,21 @@
   function collectVerifyButtons() {
     return Array.from(
       document.querySelectorAll("#actions tr:not(.hidden) button[data-action]:not(:disabled)")
-    );
+    ).filter((button) => !isActionComplete(button));
+  }
+
+  function actionsSignature() {
+    return getActionRows()
+      .map((row) => {
+        const button = row.querySelector("button[data-action]");
+        if (!button) return "";
+        return [
+          button.disabled ? "1" : "0",
+          button.className,
+          button.getAttribute("data-result") || "",
+        ].join(":");
+      })
+      .join("|");
   }
 
   function sleep(ms) {
@@ -85,6 +118,24 @@
       await sleep(VERIFY_DELAY_MS);
     }
     return buttons.length;
+  }
+
+  async function waitForVerifySettlement() {
+    const deadline = Date.now() + SETTLE_MAX_MS;
+    let lastSignature = actionsSignature();
+    let stableRounds = 0;
+
+    while (Date.now() < deadline) {
+      await sleep(SETTLE_POLL_MS);
+      const signature = actionsSignature();
+      if (signature === lastSignature) {
+        stableRounds += 1;
+        if (stableRounds >= SETTLE_STABLE_ROUNDS) return;
+      } else {
+        lastSignature = signature;
+        stableRounds = 0;
+      }
+    }
   }
 
   async function copyText(text) {
@@ -134,14 +185,27 @@
         event.preventDefault();
         event.stopPropagation();
 
-        const urls = collectActionUrls();
-        if (!urls.length) return;
+        if (copyButton.dataset.running === "1") return;
+        copyButton.dataset.running = "1";
+        copyButton.disabled = true;
 
         try {
+          await clickAllVerifyButtons();
+          await waitForVerifySettlement();
+
+          const urls = collectActionUrls({ incompleteOnly: true });
+          if (!urls.length) {
+            flashLabel(copyButton, "0", COPY_LABEL);
+            return;
+          }
+
           await copyText(urls.join("\n"));
           flashLabel(copyButton, COPY_LABEL_DONE, COPY_LABEL);
         } catch (error) {
           console.error("[Giveaway.su Copy Actions] Failed to copy:", error);
+        } finally {
+          copyButton.disabled = false;
+          delete copyButton.dataset.running;
         }
       });
 
@@ -166,6 +230,7 @@
         try {
           const count = await clickAllVerifyButtons();
           if (count > 0) {
+            await waitForVerifySettlement();
             flashLabel(verifyButton, VERIFY_LABEL_DONE, VERIFY_LABEL);
           }
         } catch (error) {
