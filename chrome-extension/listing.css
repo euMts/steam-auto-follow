@@ -1,0 +1,33 @@
+#giveaways .row > .col-md-4.col-sm-6 {
+  position: relative;
+}
+
+#giveaways .saf-used-check {
+  position: absolute;
+  top: 8px;
+  right: 20px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+#giveaways .saf-used-check input {
+  margin: 0;
+  cursor: pointer;
+}
+
+#giveaways .col-md-4.col-sm-6.saf-giveaway-used .giveaway-item {
+  opacity: 0.45;
+  filter: grayscale(0.35);
+}

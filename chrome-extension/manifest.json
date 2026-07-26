@@ -1,14 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Giveaway.su Copy Actions",
-  "version": "1.2.0",
-  "description": "Copia URLs e verifica todas as tasks do giveaway.su.",
+  "version": "1.3.0",
+  "description": "Copia URLs, verifica tasks e marca giveaways já usados.",
   "permissions": ["clipboardWrite"],
   "content_scripts": [
     {
       "matches": ["https://giveaway.su/giveaway/view/*"],
       "js": ["content.js"],
       "css": ["content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://giveaway.su/", "https://giveaway.su/?*"],
+      "js": ["listing.js"],
+      "css": ["listing.css"],
       "run_at": "document_idle"
     }
   ]
