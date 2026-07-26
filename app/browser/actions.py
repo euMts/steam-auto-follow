@@ -81,20 +81,17 @@ GROUP_SELECTORS = (
 )
 
 GROUP_MEMBER_SELECTORS = (
-    'form[name="leave_group_form"]',
-    "form#leave_group_form",
     '.grouppage_join_area a:has-text("Sair do grupo")',
     '.grouppage_join_area a:has-text("Leave Group")',
-    "text=Sair do grupo",
-    "text=Leave Group",
-    "text=You're In",
-    "text=Você faz parte",
 )
 
 GROUP_JOIN_FORM_SELECTORS = (
     'form[name="join_group_form"]',
     "form#join_group_form",
 )
+
+GROUP_JOIN_TEXT_MARKERS = ("entrar", "join group", "unir-se", "unir se")
+GROUP_LEAVE_TEXT_MARKERS = ("sair do grupo", "leave group")
 
 WISHLIST_SELECTORS = (
     "#add_to_wishlist_area a.add_to_wishlist",
@@ -357,9 +354,29 @@ class FollowGroupAction:
         self.browser = browser
 
     async def _is_member(self, page: Page) -> bool:
-        leave = page.locator('form[name="leave_group_form"], form#leave_group_form').first
-        if await leave.count() > 0:
-            return True
+        """Só considera membro se o CTA de sair estiver presente — não o form oculto."""
+        # Prioridade: texto do botão em .grouppage_join_area (join vs leave)
+        buttons = page.locator(
+            ".grouppage_join_area a.btn_green_white_innerfade, "
+            ".grouppage_join_area a.btn_medium, "
+            ".grouppage_join_area a[href*='join_group'], "
+            ".grouppage_join_area a[href*='leave_group']"
+        )
+        count = await buttons.count()
+        for idx in range(count):
+            try:
+                text = ((await buttons.nth(idx).inner_text()) or "").strip().lower()
+            except Exception:
+                continue
+            if any(marker in text for marker in GROUP_JOIN_TEXT_MARKERS):
+                return False
+            if any(marker in text for marker in GROUP_LEAVE_TEXT_MARKERS):
+                return True
+
+        # Form de entrar presente ⇒ ainda não é membro (Steam deixa leave_form no DOM às vezes)
+        if await page.locator(",".join(GROUP_JOIN_FORM_SELECTORS)).count() > 0:
+            return False
+
         return await _any_visible(page, GROUP_MEMBER_SELECTORS, timeout=1200)
 
     async def _join_form(self, page: Page) -> Locator | None:
