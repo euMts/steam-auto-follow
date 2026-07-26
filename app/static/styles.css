@@ -215,7 +215,12 @@ button.tiny { padding: 0.3rem 0.55rem; font-size: 0.75rem; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); font-size: 0.85rem; }
 
-.table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.table-wrap {
+  max-height: min(420px, 50vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th, td { padding: 0.65rem 0.7rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 th { color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.2); position: sticky; top: 0; }
