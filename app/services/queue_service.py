@@ -79,7 +79,8 @@ class QueueService:
             filters.append(Task.status == status)
 
         count_stmt: Select[Any] = select(func.count(Task.id))
-        list_stmt: Select[Any] = select(Task).order_by(Task.position.asc(), Task.id.asc())
+        # Dashboard: mais recentes primeiro (a fila de execução continua FIFO em claim_next)
+        list_stmt: Select[Any] = select(Task).order_by(Task.id.desc())
         if filters:
             count_stmt = count_stmt.where(*filters)
             list_stmt = list_stmt.where(*filters)

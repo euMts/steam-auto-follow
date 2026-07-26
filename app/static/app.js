@@ -263,12 +263,13 @@
 
   function renderTasks() {
     const body = $("#tasks-body");
-    $("#tasks-count").textContent = `${state.tasks.length} tarefa(s)`;
-    if (!state.tasks.length) {
+    const tasks = [...state.tasks].sort((a, b) => (b.id || 0) - (a.id || 0));
+    $("#tasks-count").textContent = `${tasks.length} tarefa(s)`;
+    if (!tasks.length) {
       body.innerHTML = `<tr><td colspan="10" class="empty">Nenhuma tarefa cadastrada</td></tr>`;
       return;
     }
-    body.innerHTML = state.tasks.map((t) => {
+    body.innerHTML = tasks.map((t) => {
       const badge = STATUS_CLASS[t.status] || "badge-muted";
       const result = t.result_message || t.last_error || "—";
       return `
