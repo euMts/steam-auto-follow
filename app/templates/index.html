@@ -197,7 +197,10 @@
     <section class="card span-2" id="card-tasks">
       <div class="card-head">
         <h2>Lista de tarefas</h2>
-        <span id="tasks-count" class="muted">0</span>
+        <div class="card-head-actions">
+          <span id="tasks-count" class="muted">0</span>
+          <button type="button" class="tiny danger" data-action="queue-clear-all">Remover todos</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table>

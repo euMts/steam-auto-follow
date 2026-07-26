@@ -122,3 +122,10 @@ async def clear_completed(session: AsyncSession = Depends(get_db)) -> MessageOut
     count = await queue_service.clear_completed(session)
     await append_log("INFO", "queue", f"{count} tarefa(s) concluída(s)/cancelada(s) removida(s)")
     return MessageOut(message=f"{count} tarefa(s) removida(s)")
+
+
+@router.delete("/api/queue/all", response_model=MessageOut)
+async def clear_all_tasks(session: AsyncSession = Depends(get_db)) -> MessageOut:
+    count = await queue_service.clear_all(session)
+    await append_log("INFO", "queue", f"{count} tarefa(s) removida(s) — lista limpa")
+    return MessageOut(message=f"{count} tarefa(s) removida(s)")

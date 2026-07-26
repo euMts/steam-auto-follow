@@ -338,8 +338,14 @@
         "queue-pause": () => api("/api/queue/pause", { method: "POST" }),
         "queue-resume": () => api("/api/queue/resume", { method: "POST" }),
         "queue-clear": () => api("/api/queue/completed", { method: "DELETE" }),
+        "queue-clear-all": () => api("/api/queue/all", { method: "DELETE" }),
         "queue-retry-failed": () => api("/api/queue/retry-failed", { method: "POST" }),
       };
+      if (btn.dataset.action === "queue-clear-all") {
+        if (!confirm("Remover todas as tarefas da lista?")) return;
+        await runAction(map["queue-clear-all"], "Lista limpa");
+        return;
+      }
       const fn = map[btn.dataset.action];
       if (fn) await runAction(fn, "OK");
       return;

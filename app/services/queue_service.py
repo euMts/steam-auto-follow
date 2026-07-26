@@ -256,6 +256,12 @@ class QueueService:
         await ws_manager.broadcast("queue_updated", {})
         return result.rowcount or 0
 
+    async def clear_all(self, session: AsyncSession) -> int:
+        result = await session.execute(delete(Task))
+        await session.commit()
+        await ws_manager.broadcast("queue_updated", {})
+        return result.rowcount or 0
+
     async def delete_task(self, session: AsyncSession, task_id: int) -> bool:
         task = await session.get(Task, task_id)
         if not task:
