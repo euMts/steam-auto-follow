@@ -65,17 +65,35 @@ CURATOR_STYLE_FOLLOWING_SELECTORS = (
 )
 
 GROUP_SELECTORS = (
-    'role=button[name=/entrar no grupo/i]',
+    ".grouppage_join_area a.btn_green_white_innerfade",
+    ".grouppage_join_area a.btn_medium",
+    'a.btn_green_white_innerfade:has-text("Entrar no grupo")',
+    'a.btn_green_white_innerfade:has-text("Join Group")',
+    'a.btn_green_white_innerfade:has-text("Unir-se ao grupo")',
     'role=link[name=/entrar no grupo/i]',
-    'role=button[name=/join group/i]',
     'role=link[name=/join group/i]',
     "text=Entrar no grupo",
     "text=Unir-se ao grupo",
     "text=Join Group",
     "#join_group_form .btn_green_white_innerfade",
-    ".grouppage_join_area .btn_green_white_innerfade",
-    ".grouppage_join_area a.btn_green_white_innerfade",
+    'xpath=//*[@id="responsive_page_template_content"]//div[contains(@class,"grouppage_join_area")]//a[contains(@class,"btn")]',
     'xpath=//*[contains(@class,"grouppage_join_area")]//a[contains(@class,"btn")]',
+)
+
+GROUP_MEMBER_SELECTORS = (
+    'form[name="leave_group_form"]',
+    "form#leave_group_form",
+    '.grouppage_join_area a:has-text("Sair do grupo")',
+    '.grouppage_join_area a:has-text("Leave Group")',
+    "text=Sair do grupo",
+    "text=Leave Group",
+    "text=You're In",
+    "text=Você faz parte",
+)
+
+GROUP_JOIN_FORM_SELECTORS = (
+    'form[name="join_group_form"]',
+    "form#join_group_form",
 )
 
 WISHLIST_SELECTORS = (
@@ -338,15 +356,85 @@ class FollowGroupAction:
     def __init__(self, browser: BrowserManager) -> None:
         self.browser = browser
 
+    async def _is_member(self, page: Page) -> bool:
+        leave = page.locator('form[name="leave_group_form"], form#leave_group_form').first
+        if await leave.count() > 0:
+            return True
+        return await _any_visible(page, GROUP_MEMBER_SELECTORS, timeout=1200)
+
+    async def _join_form(self, page: Page) -> Locator | None:
+        for selector in GROUP_JOIN_FORM_SELECTORS:
+            loc = page.locator(selector).first
+            if await loc.count() > 0:
+                return loc
+        return None
+
+    async def _click_join(self, page: Page) -> None:
+        """Entra no grupo via form submit (mais confiável que javascript: href)."""
+        settings = get_settings()
+        factory = get_session_factory()
+        async with factory() as session:
+            runtime = await get_or_create_runtime(session)
+            await rate_limit_guard.pause_before_click(runtime)
+
+        form = await self._join_form(page)
+        button = await _first_visible(page, GROUP_SELECTORS, timeout=2000)
+        if button is None:
+            # Botão pode estar em .responsive_hidden (viewport estreito)
+            button = page.locator(".grouppage_join_area a.btn_green_white_innerfade").first
+            if await button.count() == 0:
+                button = None
+
+        try:
+            if button is not None:
+                try:
+                    await button.scroll_into_view_if_needed(timeout=settings.element_timeout_ms)
+                except Exception:
+                    pass
+                async with page.expect_navigation(
+                    wait_until="domcontentloaded",
+                    timeout=settings.navigation_timeout_ms,
+                ):
+                    await button.click(
+                        timeout=settings.element_timeout_ms,
+                        force=True,
+                    )
+                return
+
+            if form is not None:
+                async with page.expect_navigation(
+                    wait_until="domcontentloaded",
+                    timeout=settings.navigation_timeout_ms,
+                ):
+                    await form.evaluate("form => form.submit()")
+                return
+        except PlaywrightTimeoutError as exc:
+            # Submit pode não disparar navigation em alguns layouts; segue para confirmação
+            if form is not None:
+                try:
+                    await form.evaluate("form => form.submit()")
+                    await page.wait_for_timeout(1200)
+                    return
+                except Exception:
+                    pass
+            raise ActionError(
+                ActionErrorCode.TIMEOUT,
+                "Timeout ao entrar no grupo",
+                retryable=True,
+            ) from exc
+
+        raise ActionError(
+            ActionErrorCode.SELECTOR_NOT_FOUND,
+            "Botão/formulário de entrar no grupo não encontrado",
+            retryable=True,
+        )
+
     async def run(self, url: str, *, step_callback=None) -> ActionResult:
         await _step(step_callback, "Abrindo URL")
         page = await navigate(self.browser, url, "grupo")
 
-        await _step(step_callback, "Procurando botão de entrar no grupo")
-        already = (
-            await _any_visible(page, ("text=Leave Group", "text=Sair do grupo", "text=You're In", "text=Você faz parte"))
-        )
-        if already:
+        await _step(step_callback, "Verificando se já é membro")
+        if await self._is_member(page):
             return ActionResult(
                 success=True,
                 message="Já é membro do grupo",
@@ -354,8 +442,12 @@ class FollowGroupAction:
                 code=ActionErrorCode.ALREADY_FOLLOWING,
             )
 
-        button = await _first_visible(page, GROUP_SELECTORS)
-        if button is None:
+        join_form = await self._join_form(page)
+        join_btn = await _first_visible(page, GROUP_SELECTORS, timeout=1500)
+        has_hidden_btn = (
+            await page.locator(".grouppage_join_area a.btn_green_white_innerfade").count()
+        ) > 0
+        if join_form is None and join_btn is None and not has_hidden_btn:
             raise ActionError(
                 ActionErrorCode.SELECTOR_NOT_FOUND,
                 "Botão de entrar no grupo não encontrado",
@@ -363,21 +455,21 @@ class FollowGroupAction:
             )
 
         await _step(step_callback, "Clicando em entrar no grupo")
-        await safe_click(button, page)
+        await self._click_join(page)
+        await detect_blocking_conditions(page)
 
         await _step(step_callback, "Confirmando resultado")
-        await page.wait_for_timeout(900)
-        await detect_blocking_conditions(page)
-        if not await _any_visible(
-            page,
-            ("text=Leave Group", "text=Sair do grupo", "text=You're In", "text=Você faz parte"),
-            timeout=5000,
-        ):
-            raise ActionError(
-                ActionErrorCode.CONFIRMATION_MISSING,
-                "Clique executado, mas confirmação visual não encontrada",
-                retryable=True,
-            )
+        await page.wait_for_timeout(800)
+        if not await self._is_member(page):
+            # Reload e confere (Steam às vezes atrasa o UI)
+            await self.browser.reload()
+            await detect_blocking_conditions(page)
+            if not await self._is_member(page):
+                raise ActionError(
+                    ActionErrorCode.CONFIRMATION_MISSING,
+                    "Clique executado, mas confirmação visual não encontrada",
+                    retryable=True,
+                )
 
         await _step(step_callback, "Finalizando")
         return ActionResult(success=True, message="Entrou no grupo com sucesso")
